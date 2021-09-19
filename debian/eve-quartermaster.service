@@ -1,0 +1,16 @@
+[Unit]
+Description=EVE Quartermaster BOT
+Requires=network.target
+After=network.target
+
+[Service]
+Type=simple
+User=evequartermaster
+Group=nogroup
+WorkingDirectory=/srv/eve_quartermaster
+ExecStart=/srv/eve_quartermaster/quartermaster run -s "FILLME" --discord_auth_token="FILLME" --discord_channel_id="FILLME" --eve_client_id="FILLME" --eve_sso_secret="FILLME"
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target
