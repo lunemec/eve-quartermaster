@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/adrg/strutil"
+	"github.com/adrg/strutil/metrics"
 	"github.com/lunemec/eve-quartermaster/pkg/repository"
 	"github.com/lunemec/eve-quartermaster/pkg/token"
 
@@ -64,6 +66,7 @@ func NewQuartermasterBot(
 		"check_interval", checkInterval,
 		"notify_interval", notifyInterval,
 	)
+
 	esi := goesi.NewAPIClient(client, "EVE Quartermaster")
 	return &quartermasterBot{
 		ctx:            context.WithValue(context.Background(), goesi.ContextOAuth2, tokenSource),
@@ -87,9 +90,9 @@ func (b *quartermasterBot) Bot() error {
 	if err != nil {
 		return errors.Wrap(err, "unable to connect to discord")
 	}
-	// Add handler to listen for "!quartermaster" messages as help message.
+	// Add handler to listen for "!help" messages as help message.
 	b.discord.AddHandler(b.helpHandler)
-	// Add handler to listen for "!report" messages to show missing doctrines on contract.
+	// Add handler to listen for "!qm" messages to show missing doctrines on contract.
 	b.discord.AddHandler(b.reportHandler)
 	// Add handler to listen for "!stock" messages to list currently available doctrines in stock.
 	b.discord.AddHandler(b.stockHandler)
@@ -161,12 +164,17 @@ func (b *quartermasterBot) reportMissing() ([]doctrineReport, error) {
 	}
 	var missing []doctrineReport
 	for _, wantDoctrine := range wantDoctrines {
-		haveInStock, ok := gotDoctrines[wantDoctrine.Name]
-		if (!ok || haveInStock < wantDoctrine.WantInStock) && wantDoctrine.WantInStock > 0 {
-			missing = append(missing, doctrineReport{
-				doctrine:    wantDoctrine,
-				haveInStock: haveInStock,
-			})
+		if wantDoctrine.WantInStock == 0 {
+			continue
+		}
+		for doctrine, haveInStock := range gotDoctrines {
+			namesEqual := compareDoctrineNames(wantDoctrine.Name, doctrine)
+			if namesEqual && haveInStock < wantDoctrine.WantInStock {
+				missing = append(missing, doctrineReport{
+					doctrine:    wantDoctrine,
+					haveInStock: haveInStock,
+				})
+			}
 		}
 	}
 	sort.Slice(missing, func(i, j int) bool {
@@ -224,10 +232,48 @@ func (b *quartermasterBot) loadContracts() ([]esi.GetCorporationsCorporationIdCo
 func doctrinesAvailable(contracts []esi.GetCorporationsCorporationIdContracts200Ok) map[string]int {
 	var out = make(map[string]int)
 	for _, contract := range contracts {
-		out[contract.Title]++
+		var isInAvailable bool
+		for doctrineAvailable := range out {
+			namesEqual := compareDoctrineNames(doctrineAvailable, contract.Title)
+			if namesEqual {
+				isInAvailable = true
+				out[doctrineAvailable]++
+			}
+		}
+		if !isInAvailable {
+			out[contract.Title]++
+		}
 	}
 
 	return out
+}
+
+func compareDoctrineNames(want, have string) bool {
+	wantParts := strings.Split(want, " ")
+	haveParts := strings.Split(have, " ")
+
+	var wantPartsEqual int
+	for _, wantPart := range wantParts {
+		wantPartLower := strings.ToLower(wantPart)
+
+		for _, havePart := range haveParts {
+			havePartLower := strings.ToLower(havePart)
+			if wantPartLower == havePartLower {
+				wantPartsEqual++
+			}
+		}
+	}
+
+	// Simple check went OK, all wantParts are found in haveParts.
+	if wantPartsEqual >= len(wantParts) {
+		return true
+	}
+	// Otherwise try similarity check.
+	// This matches more complicated names containing () and so on.
+	metric := metrics.NewJaccard()
+	metric.CaseSensitive = false
+	similarity := strutil.Similarity(want, have, metric)
+	return similarity >= 0.8
 }
 
 func (b *quartermasterBot) notifyMessage(missingDoctrines []doctrineReport) *discordgo.MessageEmbed {
@@ -248,7 +294,7 @@ func (b *quartermasterBot) notifyMessage(missingDoctrines []doctrineReport) *dis
 
 	return &discordgo.MessageEmbed{
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
-			URL: "https://i.imgur.com/pKEZq6F.png", // TODO icon
+			URL: "https://i.imgur.com/ZwUn8DI.jpg",
 		},
 		Color:       color,
 		Description: strings.Join(parts, "\n"),

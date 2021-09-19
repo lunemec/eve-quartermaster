@@ -12,7 +12,7 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 		return
 	}
 
-	if m.Content == "!report" {
+	if m.Content == "!qm" {
 		missingDoctrines, err := b.reportMissing()
 		if err != nil {
 			b.log.Errorw("Error checking for missing doctrines",

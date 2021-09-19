@@ -58,7 +58,7 @@ func stockMessage(doctrines map[string]int) *discordgo.MessageEmbed {
 	return &discordgo.MessageEmbed{
 		Title: "Have on contract",
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
-			URL: "https://i.imgur.com/pKEZq6F.png",
+			URL: "https://i.imgur.com/ZwUn8DI.jpg",
 		},
 		Color:       0x00ff00,
 		Description: fmt.Sprintf("```\n%s\n```", strings.Join(parts, "\n")),

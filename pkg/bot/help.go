@@ -14,14 +14,14 @@ func (b *quartermasterBot) helpHandler(s *discordgo.Session, m *discordgo.Messag
 		return
 	}
 
-	if m.Content != "!quartermaster" {
+	if m.Content != "!help" {
 		return
 	}
 	msg := "I will notify you periodically when doctrine ships" +
 		"are missing from contracts compared to what is wanted. \n\n" +
 		"Here is the list of commands you can use:\n" +
-		"`!quartermaster` - shows this help message\n" +
-		"`!report` - shows a report of missing stock\n" +
+		"`!help` - shows this help message\n" +
+		"`!qm` - shows a report of missing stock\n" +
 		"`!stock` - shows currently available ships on contract\n" +
 		"`!want NN Doctrine name` - we want to have `Doctrine name` `NN` times on contract (0 to remove)\n" +
 		"`!want list` - list of ships we want to have on contract"
@@ -29,7 +29,7 @@ func (b *quartermasterBot) helpHandler(s *discordgo.Session, m *discordgo.Messag
 	b.discord.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
 		Title: "Hello, I am your Quartermaster",
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
-			URL: "https://i.imgur.com/pKEZq6F.png",
+			URL: "https://i.imgur.com/ZwUn8DI.jpg",
 		},
 		Color:       0x00ff00,
 		Description: msg,

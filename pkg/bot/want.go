@@ -99,9 +99,9 @@ func wantListMessage(wantDoctrines []repository.Doctrine) *discordgo.MessageEmbe
 	}
 
 	return &discordgo.MessageEmbed{
-		Title: "Want to have on contract",
+		Title: "Target stock",
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
-			URL: "https://i.imgur.com/pKEZq6F.png",
+			URL: "https://i.imgur.com/ZwUn8DI.jpg",
 		},
 		Color:       0x00ff00,
 		Description: fmt.Sprintf("```\n%s\n```", strings.Join(parts, "\n")),

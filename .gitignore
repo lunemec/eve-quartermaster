@@ -5,3 +5,4 @@ repository.json
 Makefile
 main
 fuelbot
+pkg/bot/bot_test.go
