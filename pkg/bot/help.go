@@ -24,7 +24,8 @@ func (b *quartermasterBot) helpHandler(s *discordgo.Session, m *discordgo.Messag
 		"`!qm` - shows a report of missing stock\n" +
 		"`!stock` - shows currently available ships on contract\n" +
 		"`!want NN Doctrine name` - we want to have `Doctrine name` `NN` times on contract (0 to remove)\n" +
-		"`!want list` - list of ships we want to have on contract"
+		"`!want list` - list of ships we want to have on contract\n" +
+		"`!parse excel` - parse copy+pasted columns from excel (sheet)"
 
 	b.discord.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
 		Title: "Hello, I am your Quartermaster",
