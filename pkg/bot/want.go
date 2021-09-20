@@ -75,10 +75,9 @@ func (b *quartermasterBot) wantHandler(s *discordgo.Session, m *discordgo.Messag
 			return
 		}
 
-		msg := fmt.Sprintf("OK, we want to have `%s` `%dx`", doctrineName, wantInStock)
-		_, err = b.discord.ChannelMessageSend(m.ChannelID, msg)
+		err = b.discord.MessageReactionAdd(m.ChannelID, m.ID, `👍`)
 		if err != nil {
-			b.log.Errorw("error sending response to !want", "error", err)
+			b.log.Errorw("error reacting with :+1:", "error", err)
 			return
 		}
 		return

@@ -6,3 +6,4 @@ Makefile
 main
 fuelbot
 pkg/bot/bot_test.go
+pkg/bot/parse_excel_test.go

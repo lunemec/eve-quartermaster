@@ -92,6 +92,8 @@ func (b *quartermasterBot) Bot() error {
 	}
 	// Add handler to listen for "!help" messages as help message.
 	b.discord.AddHandler(b.helpHandler)
+	// Add handler to listen for "!parse excel" messages for bulk insert from excel (or google) sheet.
+	b.discord.AddHandler(b.parseExcelHandler)
 	// Add handler to listen for "!qm" messages to show missing doctrines on contract.
 	b.discord.AddHandler(b.reportHandler)
 	// Add handler to listen for "!stock" messages to list currently available doctrines in stock.
