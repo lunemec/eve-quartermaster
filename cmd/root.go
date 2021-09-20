@@ -14,7 +14,7 @@ import (
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "eve-quartermaster",
-	Short: "Discord bot for structure fuel notification",
+	Short: "Discord bot for doctrine ship low stock notification",
 	Long:  ``,
 }
 
