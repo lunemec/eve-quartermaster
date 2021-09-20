@@ -20,7 +20,7 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 			)
 			return
 		}
-		_, err = b.discord.ChannelMessageSendEmbed(b.channelID, b.notifyMessage(missingDoctrines))
+		_, err = b.discord.ChannelMessageSendEmbed(m.ChannelID, b.notifyMessage(missingDoctrines))
 		if err != nil {
 			b.log.Errorw("error sending report message", "error", err)
 		}
