@@ -27,7 +27,7 @@ func (b *quartermasterBot) parseExcelHandler(s *discordgo.Session, m *discordgo.
 		// Doctrine 2	10
 		commandContent := strings.TrimPrefix(m.Content, "!parse excel")
 		commandContent = strings.ReplaceAll(commandContent, "```", "")
-		b.log.Infow("Got excel data", "data", commandContent)
+
 		doctrines := parseExcel(commandContent)
 		if len(doctrines) == 0 {
 			_, err := b.discord.ChannelMessageSend(m.ChannelID, "You are trying to import 0 doctrines, are you sure?")

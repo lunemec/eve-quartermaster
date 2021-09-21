@@ -169,14 +169,24 @@ func (b *quartermasterBot) reportMissing() ([]doctrineReport, error) {
 		if wantDoctrine.WantInStock == 0 {
 			continue
 		}
+		var found bool
 		for doctrine, haveInStock := range gotDoctrines {
 			namesEqual := compareDoctrineNames(wantDoctrine.Name, doctrine)
+			if namesEqual {
+				found = true
+			}
 			if namesEqual && haveInStock < wantDoctrine.WantInStock {
 				missing = append(missing, doctrineReport{
 					doctrine:    wantDoctrine,
 					haveInStock: haveInStock,
 				})
 			}
+		}
+		if !found {
+			missing = append(missing, doctrineReport{
+				doctrine:    wantDoctrine,
+				haveInStock: 0,
+			})
 		}
 	}
 	sort.Slice(missing, func(i, j int) bool {
