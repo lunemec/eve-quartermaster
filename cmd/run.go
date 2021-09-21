@@ -25,7 +25,7 @@ var (
 	notifyInterval time.Duration
 
 	corporationID int32
-	assigneeID    int32
+	allianceID    int32
 
 	discordChannelID string
 	discordAuthToken string
@@ -42,7 +42,7 @@ func init() {
 	runCmd.Flags().StringVar(&discordChannelID, "discord_channel_id", "", "ID of discord channel")
 	runCmd.Flags().StringVar(&discordAuthToken, "discord_auth_token", "", "Auth token for discord")
 	runCmd.Flags().Int32Var(&corporationID, "corporation_id", 0, "Corporation ID for which to list contracts")
-	runCmd.Flags().Int32Var(&assigneeID, "assignee_id", 0, "ID of assignee to match in contracts (corp ID or alliance ID) for doctrine fits")
+	runCmd.Flags().Int32Var(&allianceID, "alliance_id", 0, "Alliance ID for which to list contracts")
 	runCmd.Flags().DurationVar(&checkInterval, "check_interval", 30*time.Minute, "how often to check EVE ESI API (default 30min)")
 	runCmd.Flags().DurationVar(&notifyInterval, "notify_interval", 12*time.Hour, "how often to spam Discord (default 12H)")
 	runCmd.Flags().StringVar(&repositoryFile, "repository_file", "repository.json", "path to repository json to save want_in_stock data (default repository.json)")
@@ -92,7 +92,7 @@ func runBot(cmd *cobra.Command, args []string) {
 		discord,
 		discordChannelID,
 		corporationID,
-		assigneeID,
+		allianceID,
 		repository,
 		checkInterval,
 		notifyInterval,

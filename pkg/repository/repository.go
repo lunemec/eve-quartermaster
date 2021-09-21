@@ -12,12 +12,20 @@ import (
 type Repository interface {
 	Read() ([]Doctrine, error)
 	Write([]Doctrine) error
-	Set(string, int) error
+	Set(string, int, ContractedOn) error
 }
 
+type ContractedOn string
+
+const (
+	Alliance    ContractedOn = "alliance"
+	Corporation ContractedOn = "corporation"
+)
+
 type Doctrine struct {
-	Name        string `json:"name"`
-	WantInStock int    `json:"want_in_stock"`
+	Name         string       `json:"name"`
+	WantInStock  int          `json:"want_in_stock"`
+	ContractedOn ContractedOn `json:"contracted_on"`
 }
 
 type jsonRepository struct {
@@ -84,7 +92,7 @@ func (r *jsonRepository) Write(wantInStock []Doctrine) error {
 	return nil
 }
 
-func (r *jsonRepository) Set(doctrineName string, wantInStock int) error {
+func (r *jsonRepository) Set(doctrineName string, wantInStock int, contractOn ContractedOn) error {
 	updatedDoctrines, err := r.Read()
 	if err != nil {
 		return errors.Wrap(err, "error reading current saved doctrines")
@@ -105,6 +113,7 @@ func (r *jsonRepository) Set(doctrineName string, wantInStock int) error {
 			removeIdx = i
 
 			savedDoctrine.WantInStock = wantInStock
+			savedDoctrine.ContractedOn = contractOn
 			updatedDoctrines[i] = savedDoctrine
 		}
 	}
@@ -113,8 +122,9 @@ func (r *jsonRepository) Set(doctrineName string, wantInStock int) error {
 	}
 	if !found && !remove {
 		updatedDoctrines = append(updatedDoctrines, Doctrine{
-			Name:        doctrineName,
-			WantInStock: wantInStock,
+			Name:         doctrineName,
+			WantInStock:  wantInStock,
+			ContractedOn: contractOn,
 		})
 	}
 	return r.Write(updatedDoctrines)

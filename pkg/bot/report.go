@@ -1,6 +1,8 @@
 package bot
 
 import (
+	"fmt"
+
 	"github.com/bwmarrin/discordgo"
 )
 
@@ -13,14 +15,24 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 	}
 
 	if m.Content == "!qm" {
-		missingDoctrines, err := b.reportMissing()
+		missingCorporationDoctrines, missingAllianceDoctrines, err := b.reportMissing()
 		if err != nil {
 			b.log.Errorw("Error checking for missing doctrines",
 				"error", err,
 			)
+
+			msg := fmt.Sprintf("Sorry, some error happened: %s", err.Error())
+			_, err := b.discord.ChannelMessageSend(m.ChannelID, msg)
+			if err != nil {
+				b.log.Errorw("error responding with error", "error", err)
+				return
+			}
 			return
 		}
-		_, err = b.discord.ChannelMessageSendEmbed(m.ChannelID, b.notifyMessage(missingDoctrines))
+		_, err = b.discord.ChannelMessageSendEmbed(
+			m.ChannelID,
+			b.notifyMessage(missingCorporationDoctrines, missingAllianceDoctrines),
+		)
 		if err != nil {
 			b.log.Errorw("error sending report message", "error", err)
 		}

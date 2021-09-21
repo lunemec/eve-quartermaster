@@ -35,7 +35,7 @@ type quartermasterBot struct {
 	channelID   string
 
 	corporationID int32
-	assigneeID    int32
+	allianceID    int32
 
 	checkInterval  time.Duration
 	notifyInterval time.Duration
@@ -58,7 +58,7 @@ func NewQuartermasterBot(
 	tokenSource token.Source,
 	discord *discordgo.Session,
 	channelID string,
-	corporationID, assigneeID int32,
+	corporationID, allianceID int32,
 	repository repository.Repository,
 	checkInterval, notifyInterval time.Duration,
 ) Bot {
@@ -76,7 +76,7 @@ func NewQuartermasterBot(
 		discord:        discord,
 		channelID:      channelID,
 		corporationID:  corporationID,
-		assigneeID:     assigneeID,
+		allianceID:     allianceID,
 		checkInterval:  checkInterval,
 		notifyInterval: notifyInterval,
 		repository:     repository,
@@ -111,25 +111,40 @@ type doctrineReport struct {
 
 func (b *quartermasterBot) runForever() error {
 	for {
-		missingDoctrines, err := b.reportMissing()
+		var (
+			shouldNotify    bool
+			shouldNotifyOne bool
+			allDoctrines    []doctrineReport
+		)
+
+		missingCorpDoctrines, missingAllianceDoctrines, err := b.reportMissing()
 		if err != nil {
 			b.log.Errorw("Error checking for missing doctrines",
 				"error", err,
 			)
-			continue
+			goto SLEEP
 		}
 
+		allDoctrines = append(missingCorpDoctrines, missingAllianceDoctrines...)
+
 		// If just one of the missing doctrines should be notified about, notify about all.
-		var shouldNotify bool
-		for _, missingDoctrine := range missingDoctrines {
-			shouldNotifyOne := b.shouldNotify(missingDoctrine.doctrine.Name)
+
+		for _, missingDoctrine := range allDoctrines {
+			shouldNotifyOne = b.shouldNotify(missingDoctrine.doctrine.Name)
 			if shouldNotifyOne {
 				shouldNotify = true
 			}
 		}
 
 		if shouldNotify {
-			_, err = b.discord.ChannelMessageSendEmbed(b.channelID, b.notifyMessage(missingDoctrines))
+			if len(allDoctrines) == 0 {
+				// No doctrine is missing, do not notify.
+				goto SLEEP
+			}
+			_, err = b.discord.ChannelMessageSendEmbed(
+				b.channelID,
+				b.notifyMessage(missingCorpDoctrines, missingAllianceDoctrines),
+			)
 			switch {
 			case err != nil:
 				b.log.Errorw("Error sending discord message",
@@ -138,32 +153,53 @@ func (b *quartermasterBot) runForever() error {
 				// In case of error, we fall through to the time.Sleep
 				// block. We also do not set the structure as notified
 				// and it get picked up on next iteration.
-				continue
+				goto SLEEP
 			case err == nil:
-				for _, missingDoctrine := range missingDoctrines {
+				for _, missingDoctrine := range allDoctrines {
 					b.setWasNotified(missingDoctrine.doctrine.Name)
 				}
 			}
 		}
-
+	SLEEP:
 		time.Sleep(b.checkInterval)
 	}
 }
 
-func (b *quartermasterBot) reportMissing() ([]doctrineReport, error) {
-	contractsAvailable, err := b.loadContracts()
+func (b *quartermasterBot) reportMissing() ([]doctrineReport, []doctrineReport, error) {
+	corpContracts, allianceContracts, err := b.loadContracts()
 	if err != nil {
-		// Log but do not return error, we don't want to crash on panic.
-		b.log.Errorw("Error loading contracts",
-			"error", errors.Wrap(err, "error loading contracts"),
-		)
+		return nil, nil, errors.Wrap(err, "unable to load contracts")
 	}
 
-	gotDoctrines := doctrinesAvailable(contractsAvailable)
-	wantDoctrines, err := b.repository.Read()
+	gotCorpDoctrines := doctrinesAvailable(corpContracts)
+	gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
+	wantAllDoctrines, err := b.repository.Read()
 	if err != nil {
-		b.log.Errorw("Error reading wanted doctrines", "error", err)
+		return nil, nil, errors.Wrap(err, "error reading wanted doctrines")
 	}
+
+	wantCorporationDoctrines := filterDoctrines(wantAllDoctrines, repository.Corporation)
+	wantAllianceDoctrines := filterDoctrines(wantAllDoctrines, repository.Alliance)
+
+	return b.missingDoctrines(wantCorporationDoctrines, gotCorpDoctrines),
+		b.missingDoctrines(wantAllianceDoctrines, gotAllianceDoctrines),
+		nil
+}
+
+func filterDoctrines(doctrines []repository.Doctrine, contractedOn repository.ContractedOn) []repository.Doctrine {
+	var out []repository.Doctrine
+	for _, doctrine := range doctrines {
+		if doctrine.ContractedOn == contractedOn {
+			out = append(out, doctrine)
+		}
+	}
+	return out
+}
+
+func (b *quartermasterBot) missingDoctrines(
+	wantDoctrines []repository.Doctrine,
+	gotDoctrines map[string]int,
+) []doctrineReport {
 	var missing []doctrineReport
 	for _, wantDoctrine := range wantDoctrines {
 		if wantDoctrine.WantInStock == 0 {
@@ -192,27 +228,31 @@ func (b *quartermasterBot) reportMissing() ([]doctrineReport, error) {
 	sort.Slice(missing, func(i, j int) bool {
 		return missing[i].doctrine.Name < missing[j].doctrine.Name
 	})
-	return missing, nil
+	return missing
 }
 
 // loadContracts returns contracts from EVE ESI which are assigned to specified
 // assigneeID.
-func (b *quartermasterBot) loadContracts() ([]esi.GetCorporationsCorporationIdContracts200Ok, error) {
+func (b *quartermasterBot) loadContracts() (
+	[]esi.GetCorporationsCorporationIdContracts200Ok,
+	[]esi.GetCorporationsCorporationIdContracts200Ok,
+	error,
+) {
 	var allContracts []esi.GetCorporationsCorporationIdContracts200Ok
 
-	corpContracts, resp, err := b.esi.ESI.ContractsApi.GetCorporationsCorporationIdContracts(b.ctx, b.corporationID, nil)
+	contractsPage, resp, err := b.esi.ESI.ContractsApi.GetCorporationsCorporationIdContracts(b.ctx, b.corporationID, nil)
 	if err != nil {
-		return nil, errors.Wrap(err, "error calling ESI API")
+		return nil, nil, errors.Wrap(err, "error calling ESI API")
 	}
-	allContracts = append(allContracts, corpContracts...)
+	allContracts = append(allContracts, contractsPage...)
 
 	pages, err := strconv.Atoi(resp.Header.Get("X-Pages"))
 	if err != nil {
-		return nil, errors.Wrap(err, "error converting X-Pages to integer")
+		return nil, nil, errors.Wrap(err, "error converting X-Pages to integer")
 	}
 	// Fetch additional pages if any (starting page above is 1).
 	for i := 2; i <= pages; i++ {
-		corpContracts, _, err := b.esi.ESI.ContractsApi.GetCorporationsCorporationIdContracts(
+		contractsPage, _, err := b.esi.ESI.ContractsApi.GetCorporationsCorporationIdContracts(
 			b.ctx,
 			b.corporationID,
 			&esi.GetCorporationsCorporationIdContractsOpts{
@@ -220,24 +260,28 @@ func (b *quartermasterBot) loadContracts() ([]esi.GetCorporationsCorporationIdCo
 			},
 		)
 		if err != nil {
-			return nil, errors.Wrap(err, "error calling ESI API")
+			return nil, nil, errors.Wrap(err, "error calling ESI API")
 		}
-		allContracts = append(allContracts, corpContracts...)
+		allContracts = append(allContracts, contractsPage...)
 	}
 
 	var (
-		assigneeContracts []esi.GetCorporationsCorporationIdContracts200Ok
+		corpContracts     []esi.GetCorporationsCorporationIdContracts200Ok
+		allianceContracts []esi.GetCorporationsCorporationIdContracts200Ok
 	)
-	for _, corpContract := range allContracts {
-		if corpContract.Status != "outstanding" {
+	for _, contract := range allContracts {
+		if contract.Status != "outstanding" {
 			continue
 		}
-		if corpContract.AssigneeId == b.assigneeID {
-			assigneeContracts = append(assigneeContracts, corpContract)
+		if contract.AssigneeId == b.corporationID {
+			corpContracts = append(corpContracts, contract)
+		}
+		if contract.AssigneeId == b.allianceID {
+			allianceContracts = append(allianceContracts, contract)
 		}
 	}
 
-	return assigneeContracts, nil
+	return corpContracts, allianceContracts, nil
 }
 
 // doctrinesAvailable returns map of doctrine name -> count of contracts
@@ -288,10 +332,20 @@ func compareDoctrineNames(want, have string) bool {
 	return similarity >= 0.8
 }
 
-func (b *quartermasterBot) notifyMessage(missingDoctrines []doctrineReport) *discordgo.MessageEmbed {
+func (b *quartermasterBot) notifyMessage(missingCorporationDoctrines, missingAllianceDoctrines []doctrineReport) *discordgo.MessageEmbed {
 	var parts []string
 
-	for _, missingDoctrine := range missingDoctrines {
+	parts = append(parts, ":exclamation: ***Alliance contracts***")
+	for _, missingDoctrine := range missingAllianceDoctrines {
+		parts = append(parts, fmt.Sprintf("**%s** is low in stock, got %d but want %d",
+			missingDoctrine.doctrine.Name,
+			missingDoctrine.haveInStock,
+			missingDoctrine.doctrine.WantInStock,
+		))
+	}
+
+	parts = append(parts, "\n :grey_exclamation: ***Corporation contracts***")
+	for _, missingDoctrine := range missingCorporationDoctrines {
 		parts = append(parts, fmt.Sprintf("**%s** is low in stock, got %d but want %d",
 			missingDoctrine.doctrine.Name,
 			missingDoctrine.haveInStock,
@@ -300,10 +354,6 @@ func (b *quartermasterBot) notifyMessage(missingDoctrines []doctrineReport) *dis
 	}
 
 	var color = 0xff0000
-	if len(missingDoctrines) == 0 {
-		color = 0x00ff00
-	}
-
 	return &discordgo.MessageEmbed{
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
 			URL: "https://i.imgur.com/ZwUn8DI.jpg",

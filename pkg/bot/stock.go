@@ -18,7 +18,7 @@ func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.Messa
 	}
 
 	if m.Content == "!stock" {
-		contractsAvailable, err := b.loadContracts()
+		corporationContracts, allianceContracts, err := b.loadContracts()
 		if err != nil {
 			b.log.Errorw("error loading ESI contracts", "error", err)
 
@@ -30,8 +30,12 @@ func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.Messa
 			}
 			return
 		}
-		gotDoctrines := doctrinesAvailable(contractsAvailable)
-		_, err = b.discord.ChannelMessageSendEmbed(m.ChannelID, stockMessage(gotDoctrines))
+		gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
+		gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
+		_, err = b.discord.ChannelMessageSendEmbed(
+			m.ChannelID,
+			stockMessage(gotCorporationDoctrines, gotAllianceDoctrines),
+		)
 		if err != nil {
 			b.log.Errorw("error sending message for !want list", "error", err)
 			return
@@ -40,20 +44,35 @@ func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.Messa
 	}
 }
 
-func stockMessage(doctrines map[string]int) *discordgo.MessageEmbed {
+func stockMessage(corporationDoctrines, allianceDoctrines map[string]int) *discordgo.MessageEmbed {
 	var (
-		names []string // used for sorting by name
-		parts []string
+		namesCorporation, namesAlliance []string // used for sorting by name
+		partsCorporation, partsAlliance []string
 	)
 
-	for haveDoctrine := range doctrines {
-		names = append(names, haveDoctrine)
+	for haveDoctrine := range corporationDoctrines {
+		namesCorporation = append(namesCorporation, haveDoctrine)
 	}
-	sort.Strings(names)
+	sort.Strings(namesCorporation)
 
-	for _, name := range names {
-		parts = append(parts, fmt.Sprintf("%d %s", doctrines[name], name))
+	for haveDoctrine := range allianceDoctrines {
+		namesAlliance = append(namesAlliance, haveDoctrine)
 	}
+	sort.Strings(namesAlliance)
+
+	for _, name := range namesCorporation {
+		partsCorporation = append(partsCorporation, fmt.Sprintf("%d %s", corporationDoctrines[name], name))
+	}
+
+	for _, name := range namesAlliance {
+		partsAlliance = append(partsAlliance, fmt.Sprintf("%d %s", allianceDoctrines[name], name))
+	}
+
+	msg := fmt.Sprintf(
+		"**Alliance contracts**\n```\n%s\n```\n**Corporation contracts**\n```\n%s\n```",
+		strings.Join(partsAlliance, "\n"),
+		strings.Join(partsCorporation, "\n"),
+	)
 
 	return &discordgo.MessageEmbed{
 		Title: "Have on contract",
@@ -61,7 +80,7 @@ func stockMessage(doctrines map[string]int) *discordgo.MessageEmbed {
 			URL: "https://i.imgur.com/ZwUn8DI.jpg",
 		},
 		Color:       0x00ff00,
-		Description: fmt.Sprintf("```\n%s\n```", strings.Join(parts, "\n")),
+		Description: msg,
 		Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
 	}
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/lunemec/eve-quartermaster/pkg/repository"
 )
 
-var parseExcelRegex = regexp.MustCompile(`(?P<name>.+)\s{4}(?P<number>[0-9]+)`)
+var parseExcelRegex = regexp.MustCompile(`(?P<name>.+)\s{4}(?P<number>[0-9]+)\s{4}(?P<contract>[Aa]lliance|[Cc]orporation|[Cc]orp)`)
 
 // parseExcelHandler will be called every time a new
 // message is created on any channel that the autenticated bot has access to.
@@ -64,19 +64,21 @@ func parseExcel(input string) []repository.Doctrine {
 	var out []repository.Doctrine
 	matches := parseExcelRegex.FindAllStringSubmatch(input, -1)
 	for _, match := range matches {
-		if len(match) != 3 {
+		if len(match) != 4 {
 			continue
 		}
 		name := match[1]
 		number := match[2]
+		contract := strings.ToLower(match[3])
 		// impossible to fail since regex matches numbers.
 		num, _ := strconv.Atoi(number)
 		if num == 0 {
 			continue
 		}
 		out = append(out, repository.Doctrine{
-			Name:        name,
-			WantInStock: num,
+			Name:         name,
+			WantInStock:  num,
+			ContractedOn: repository.ContractedOn(contract),
 		})
 	}
 	return out
