@@ -44,7 +44,7 @@ func init() {
 	runCmd.Flags().Int32Var(&corporationID, "corporation_id", 0, "Corporation ID for which to list contracts")
 	runCmd.Flags().Int32Var(&allianceID, "alliance_id", 0, "Alliance ID for which to list contracts")
 	runCmd.Flags().DurationVar(&checkInterval, "check_interval", 30*time.Minute, "how often to check EVE ESI API (default 30min)")
-	runCmd.Flags().DurationVar(&notifyInterval, "notify_interval", 12*time.Hour, "how often to spam Discord (default 12H)")
+	runCmd.Flags().DurationVar(&notifyInterval, "notify_interval", 24*time.Hour, "how often to spam Discord (default 24H)")
 	runCmd.Flags().StringVar(&repositoryFile, "repository_file", "repository.json", "path to repository json to save want_in_stock data (default repository.json)")
 
 	runCmd.MarkFlagRequired("session_key")

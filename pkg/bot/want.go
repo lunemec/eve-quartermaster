@@ -60,10 +60,10 @@ func (b *quartermasterBot) wantHandler(s *discordgo.Session, m *discordgo.Messag
 			return
 		}
 
-		doctrineName := matches[0][2]
+		doctrineName := matches[0][1]
 		// It should be impossible to fail since we match with reges [0-9]
 		wantInStock, _ := strconv.Atoi(matches[0][1])
-		contractOn := strings.ToLower(matches[0][3])
+		contractOn := strings.ToLower(matches[0][2])
 		err := b.repository.Set(doctrineName, wantInStock, repository.ContractedOn(contractOn))
 		if err != nil {
 			b.log.Errorw("error saving want in stock doctrine", "error", err)
