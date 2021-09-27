@@ -60,7 +60,7 @@ func (b *quartermasterBot) wantHandler(s *discordgo.Session, m *discordgo.Messag
 			return
 		}
 
-		doctrineName := matches[0][1]
+		doctrineName := matches[0][3]
 		// It should be impossible to fail since we match with reges [0-9]
 		wantInStock, _ := strconv.Atoi(matches[0][1])
 		contractOn := strings.ToLower(matches[0][2])
