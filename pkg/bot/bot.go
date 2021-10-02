@@ -344,22 +344,28 @@ func compareDoctrineNames(want, have string) bool {
 func (b *quartermasterBot) notifyMessage(missingCorporationDoctrines, missingAllianceDoctrines []doctrineReport) *discordgo.MessageEmbed {
 	var parts []string
 
-	parts = append(parts, ":exclamation: ***Alliance contracts***")
-	for _, missingDoctrine := range missingAllianceDoctrines {
-		parts = append(parts, fmt.Sprintf("**%s** is low in stock, got %d but want %d",
-			missingDoctrine.doctrine.Name,
-			missingDoctrine.haveInStock,
-			missingDoctrine.doctrine.WantInStock,
-		))
+	// Add "Alliance" block only if there is something to show there.
+	if len(missingAllianceDoctrines) != 0 {
+		parts = append(parts, ":exclamation: ***Alliance contracts***")
+		for _, missingDoctrine := range missingAllianceDoctrines {
+			parts = append(parts, fmt.Sprintf("**%s** is low in stock, got %d but want %d",
+				missingDoctrine.doctrine.Name,
+				missingDoctrine.haveInStock,
+				missingDoctrine.doctrine.WantInStock,
+			))
+		}
 	}
 
-	parts = append(parts, "\n :grey_exclamation: ***Corporation contracts***")
-	for _, missingDoctrine := range missingCorporationDoctrines {
-		parts = append(parts, fmt.Sprintf("**%s** is low in stock, got %d but want %d",
-			missingDoctrine.doctrine.Name,
-			missingDoctrine.haveInStock,
-			missingDoctrine.doctrine.WantInStock,
-		))
+	// Add "Corporation" block only if there is something to show there.
+	if len(missingCorporationDoctrines) != 0 {
+		parts = append(parts, "\n :grey_exclamation: ***Corporation contracts***")
+		for _, missingDoctrine := range missingCorporationDoctrines {
+			parts = append(parts, fmt.Sprintf("**%s** is low in stock, got %d but want %d",
+				missingDoctrine.doctrine.Name,
+				missingDoctrine.haveInStock,
+				missingDoctrine.doctrine.WantInStock,
+			))
+		}
 	}
 
 	var color = 0xff0000
