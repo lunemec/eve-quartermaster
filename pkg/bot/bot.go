@@ -112,9 +112,9 @@ type doctrineReport struct {
 func (b *quartermasterBot) runForever() error {
 	for {
 		var (
-			shouldNotify    bool
-			shouldNotifyOne bool
-			allDoctrines    []doctrineReport
+			shouldNotifyDoctrine bool
+			allDoctrines         []doctrineReport
+			notifyDoctrines      = make(map[string]struct{})
 		)
 
 		missingCorpDoctrines, missingAllianceDoctrines, err := b.reportMissing()
@@ -128,22 +128,20 @@ func (b *quartermasterBot) runForever() error {
 		allDoctrines = append(missingCorpDoctrines, missingAllianceDoctrines...)
 
 		// If just one of the missing doctrines should be notified about, notify about all.
-
 		for _, missingDoctrine := range allDoctrines {
-			shouldNotifyOne = b.shouldNotify(missingDoctrine.doctrine.Name)
-			if shouldNotifyOne {
-				shouldNotify = true
+			shouldNotifyDoctrine = b.shouldNotify(missingDoctrine.doctrine.Name)
+			if shouldNotifyDoctrine {
+				notifyDoctrines[missingDoctrine.doctrine.Name] = struct{}{}
 			}
 		}
 
-		if shouldNotify {
-			if len(allDoctrines) == 0 {
-				// No doctrine is missing, do not notify.
-				goto SLEEP
-			}
+		if len(notifyDoctrines) != 0 {
 			_, err = b.discord.ChannelMessageSendEmbed(
 				b.channelID,
-				b.notifyMessage(missingCorpDoctrines, missingAllianceDoctrines),
+				b.notifyMessage(
+					filterNotifyDoctrines(notifyDoctrines, missingCorpDoctrines),
+					filterNotifyDoctrines(notifyDoctrines, missingAllianceDoctrines),
+				),
 			)
 			switch {
 			case err != nil:
@@ -155,8 +153,8 @@ func (b *quartermasterBot) runForever() error {
 				// and it get picked up on next iteration.
 				goto SLEEP
 			case err == nil:
-				for _, missingDoctrine := range allDoctrines {
-					b.setWasNotified(missingDoctrine.doctrine.Name)
+				for notifiedDoctrine := range notifyDoctrines {
+					b.setWasNotified(notifiedDoctrine)
 				}
 			}
 		}
@@ -229,6 +227,17 @@ func (b *quartermasterBot) missingDoctrines(
 		return missing[i].doctrine.Name < missing[j].doctrine.Name
 	})
 	return missing
+}
+
+func filterNotifyDoctrines(notifyDoctrines map[string]struct{}, doctrines []doctrineReport) []doctrineReport {
+	var out []doctrineReport
+	for _, doctrine := range doctrines {
+		_, ok := notifyDoctrines[doctrine.doctrine.Name]
+		if ok {
+			out = append(out, doctrine)
+		}
+	}
+	return out
 }
 
 // loadContracts returns contracts from EVE ESI which are assigned to specified
