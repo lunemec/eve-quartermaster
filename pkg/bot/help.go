@@ -14,14 +14,15 @@ func (b *quartermasterBot) helpHandler(s *discordgo.Session, m *discordgo.Messag
 		return
 	}
 
-	if m.Content != "!help" {
+	if m.Content != "!help" && m.Content != "!quartermaster" {
 		return
 	}
 	msg := "I will notify you periodically when doctrine ships" +
 		"are missing from contracts compared to what is wanted. \n\n" +
 		"Here is the list of commands you can use:\n" +
-		"`!help` - shows this help message\n" +
-		"`!qm` - shows a report of missing stock\n" +
+		"`!help` or `!quartermaster` - shows this help message\n" +
+		"`!report` or `!qm` - shows a report of missing stock\n" +
+		"`!report full` - shows full report of wanted doctrines with stock/missing counts\n" +
 		"`!stock` - shows currently available ships on contract\n" +
 		"`!want NN Doctrine name` - we want to have `Doctrine name` `NN` times on contract (0 to remove)\n" +
 		"`!want list` - list of ships we want to have on contract\n" +
