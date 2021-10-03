@@ -18,7 +18,8 @@ func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.Messa
 	}
 
 	if m.Content == "!stock" {
-		corporationContracts, allianceContracts, err := b.loadContracts()
+		allContracts, err := b.loadContracts()
+
 		if err != nil {
 			b.log.Errorw("error loading ESI contracts", "error", err)
 
@@ -30,6 +31,7 @@ func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.Messa
 			}
 			return
 		}
+		corporationContracts, allianceContracts := b.filterAndGroupContracts(allContracts, "outstanding")
 		gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
 		gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
 		_, err = b.discord.ChannelMessageSendEmbed(

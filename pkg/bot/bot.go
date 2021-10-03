@@ -164,12 +164,13 @@ func (b *quartermasterBot) runForever() error {
 }
 
 func (b *quartermasterBot) reportMissing() ([]doctrineReport, []doctrineReport, error) {
-	corpContracts, allianceContracts, err := b.loadContracts()
+	allContracts, err := b.loadContracts()
 	if err != nil {
 		return nil, nil, errors.Wrap(err, "unable to load contracts")
 	}
 
-	gotCorpDoctrines := doctrinesAvailable(corpContracts)
+	corporationContracts, allianceContracts := b.filterAndGroupContracts(allContracts, "outstanding")
+	gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
 	gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
 	wantAllDoctrines, err := b.repository.Read()
 	if err != nil {
@@ -179,7 +180,7 @@ func (b *quartermasterBot) reportMissing() ([]doctrineReport, []doctrineReport, 
 	wantCorporationDoctrines := filterDoctrines(wantAllDoctrines, repository.Corporation)
 	wantAllianceDoctrines := filterDoctrines(wantAllDoctrines, repository.Alliance)
 
-	return b.missingDoctrines(wantCorporationDoctrines, gotCorpDoctrines),
+	return b.missingDoctrines(wantCorporationDoctrines, gotCorporationDoctrines),
 		b.missingDoctrines(wantAllianceDoctrines, gotAllianceDoctrines),
 		nil
 }
@@ -244,20 +245,19 @@ func filterNotifyDoctrines(notifyDoctrines map[string]struct{}, doctrines []doct
 // assigneeID.
 func (b *quartermasterBot) loadContracts() (
 	[]esi.GetCorporationsCorporationIdContracts200Ok,
-	[]esi.GetCorporationsCorporationIdContracts200Ok,
 	error,
 ) {
 	var allContracts []esi.GetCorporationsCorporationIdContracts200Ok
 
 	contractsPage, resp, err := b.esi.ESI.ContractsApi.GetCorporationsCorporationIdContracts(b.ctx, b.corporationID, nil)
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "error calling ESI API")
+		return nil, errors.Wrap(err, "error calling ESI API")
 	}
 	allContracts = append(allContracts, contractsPage...)
 
 	pages, err := strconv.Atoi(resp.Header.Get("X-Pages"))
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "error converting X-Pages to integer")
+		return nil, errors.Wrap(err, "error converting X-Pages to integer")
 	}
 	// Fetch additional pages if any (starting page above is 1).
 	for i := 2; i <= pages; i++ {
@@ -269,17 +269,27 @@ func (b *quartermasterBot) loadContracts() (
 			},
 		)
 		if err != nil {
-			return nil, nil, errors.Wrap(err, "error calling ESI API")
+			return nil, errors.Wrap(err, "error calling ESI API")
 		}
 		allContracts = append(allContracts, contractsPage...)
 	}
 
+	return allContracts, nil
+}
+
+func (b *quartermasterBot) filterAndGroupContracts(
+	contracts []esi.GetCorporationsCorporationIdContracts200Ok,
+	status string,
+) (
+	[]esi.GetCorporationsCorporationIdContracts200Ok,
+	[]esi.GetCorporationsCorporationIdContracts200Ok,
+) {
 	var (
 		corpContracts     []esi.GetCorporationsCorporationIdContracts200Ok
 		allianceContracts []esi.GetCorporationsCorporationIdContracts200Ok
 	)
-	for _, contract := range allContracts {
-		if contract.Status != "outstanding" {
+	for _, contract := range contracts {
+		if contract.Status != status {
 			continue
 		}
 		if contract.AssigneeId == b.corporationID {
@@ -290,7 +300,7 @@ func (b *quartermasterBot) loadContracts() (
 		}
 	}
 
-	return corpContracts, allianceContracts, nil
+	return corpContracts, allianceContracts
 }
 
 // doctrinesAvailable returns map of doctrine name -> count of contracts
