@@ -169,7 +169,11 @@ func (b *quartermasterBot) reportMissing() ([]doctrineReport, []doctrineReport, 
 		return nil, nil, errors.Wrap(err, "unable to load contracts")
 	}
 
-	corporationContracts, allianceContracts := b.filterAndGroupContracts(allContracts, "outstanding")
+	corporationContracts, allianceContracts := b.filterAndGroupContracts(
+		allContracts,
+		"outstanding",
+		true,
+	)
 	gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
 	gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
 	wantAllDoctrines, err := b.repository.Read()
@@ -197,36 +201,56 @@ func filterDoctrines(doctrines []repository.Doctrine, contractedOn repository.Co
 
 func (b *quartermasterBot) missingDoctrines(
 	wantDoctrines []repository.Doctrine,
-	gotDoctrines map[string]int,
+	gotContracts map[string]int,
 ) []doctrineReport {
-	var missing []doctrineReport
-	for _, wantDoctrine := range wantDoctrines {
-		if wantDoctrine.WantInStock == 0 {
-			continue
+	var (
+		report []doctrineReport
+	)
+
+	doctrinesDiff := diffDoctrines(wantDoctrines, gotContracts)
+	for _, doctrineReport := range doctrinesDiff {
+		if doctrineReport.haveInStock < doctrineReport.doctrine.WantInStock {
+			report = append(report, doctrineReport)
 		}
-		var found bool
-		for doctrine, haveInStock := range gotDoctrines {
-			namesEqual := compareDoctrineNames(wantDoctrine.Name, doctrine)
+	}
+
+	sort.Slice(report, func(i, j int) bool {
+		return report[i].doctrine.Name < report[j].doctrine.Name
+	})
+	return report
+}
+
+func diffDoctrines(
+	wantDoctrines []repository.Doctrine,
+	gotContracts map[string]int,
+) map[string]doctrineReport {
+	var (
+		missing = make(map[string]doctrineReport)
+	)
+
+	// Iterate over contracts, and decrement from missing map for
+	// each found doctrine ship.
+	for _, wantDoctrine := range wantDoctrines {
+		found := false
+		for contractName, haveInStock := range gotContracts {
+			namesEqual := compareDoctrineNames(wantDoctrine.Name, contractName)
 			if namesEqual {
 				found = true
-			}
-			if namesEqual && haveInStock < wantDoctrine.WantInStock {
-				missing = append(missing, doctrineReport{
-					doctrine:    wantDoctrine,
-					haveInStock: haveInStock,
-				})
+
+				report := missing[wantDoctrine.Name]
+				report.doctrine = wantDoctrine
+				report.haveInStock += haveInStock
+				missing[wantDoctrine.Name] = report
 			}
 		}
 		if !found {
-			missing = append(missing, doctrineReport{
+			missing[wantDoctrine.Name] = doctrineReport{
 				doctrine:    wantDoctrine,
 				haveInStock: 0,
-			})
+			}
 		}
 	}
-	sort.Slice(missing, func(i, j int) bool {
-		return missing[i].doctrine.Name < missing[j].doctrine.Name
-	})
+
 	return missing
 }
 
@@ -280,6 +304,7 @@ func (b *quartermasterBot) loadContracts() (
 func (b *quartermasterBot) filterAndGroupContracts(
 	contracts []esi.GetCorporationsCorporationIdContracts200Ok,
 	status string,
+	skipExpired bool,
 ) (
 	[]esi.GetCorporationsCorporationIdContracts200Ok,
 	[]esi.GetCorporationsCorporationIdContracts200Ok,
@@ -289,7 +314,12 @@ func (b *quartermasterBot) filterAndGroupContracts(
 		allianceContracts []esi.GetCorporationsCorporationIdContracts200Ok
 	)
 	for _, contract := range contracts {
+		// Skip contract that are different status from what we want.
 		if contract.Status != status {
+			continue
+		}
+		// Skip expired contracts.
+		if skipExpired && contract.DateExpired.Before(time.Now()) {
 			continue
 		}
 		if contract.AssigneeId == b.corporationID {

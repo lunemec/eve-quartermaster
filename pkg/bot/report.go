@@ -96,7 +96,11 @@ func (b *quartermasterBot) reportFull() (
 		return nil, nil, nil, nil, errors.Wrap(err, "unable to load contracts")
 	}
 
-	corporationContracts, allianceContracts := b.filterAndGroupContracts(allContracts, "outstanding")
+	corporationContracts, allianceContracts := b.filterAndGroupContracts(
+		allContracts,
+		"outstanding",
+		true,
+	)
 	gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
 	gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
 	wantAllDoctrines, err := b.repository.Read()
@@ -105,7 +109,11 @@ func (b *quartermasterBot) reportFull() (
 	}
 
 	// Get list of finished contracts to see how many sell per month.
-	finishedCorporationContracts, finishedAllianceContracts := b.filterAndGroupContracts(allContracts, "finished")
+	finishedCorporationContracts, finishedAllianceContracts := b.filterAndGroupContracts(
+		allContracts,
+		"finished",
+		false,
+	)
 	// Group them by contract title.
 	finishedCorporationDoctrines := doctrinesAvailable(finishedCorporationContracts)
 	finishedAllianceDoctrines := doctrinesAvailable(finishedAllianceContracts)
@@ -125,29 +133,12 @@ func (b *quartermasterBot) fullDoctrines(
 	gotDoctrines map[string]int,
 ) []doctrineReport {
 	var doctrines []doctrineReport
-	for _, wantDoctrine := range wantDoctrines {
-		if wantDoctrine.WantInStock == 0 {
-			continue
-		}
-		var found bool
-		for doctrine, haveInStock := range gotDoctrines {
-			namesEqual := compareDoctrineNames(wantDoctrine.Name, doctrine)
 
-			if namesEqual {
-				found = true
-				doctrines = append(doctrines, doctrineReport{
-					doctrine:    wantDoctrine,
-					haveInStock: haveInStock,
-				})
-			}
-		}
-		if !found {
-			doctrines = append(doctrines, doctrineReport{
-				doctrine:    wantDoctrine,
-				haveInStock: 0,
-			})
-		}
+	doctrinesDiff := diffDoctrines(wantDoctrines, gotDoctrines)
+	for _, doctrine := range doctrinesDiff {
+		doctrines = append(doctrines, doctrine)
 	}
+
 	sort.Slice(doctrines, func(i, j int) bool {
 		return doctrines[i].doctrine.Name < doctrines[j].doctrine.Name
 	})

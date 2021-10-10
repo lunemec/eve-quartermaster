@@ -31,7 +31,11 @@ func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.Messa
 			}
 			return
 		}
-		corporationContracts, allianceContracts := b.filterAndGroupContracts(allContracts, "outstanding")
+		corporationContracts, allianceContracts := b.filterAndGroupContracts(
+			allContracts,
+			"outstanding",
+			true,
+		)
 		gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
 		gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
 		_, err = b.discord.ChannelMessageSendEmbed(
