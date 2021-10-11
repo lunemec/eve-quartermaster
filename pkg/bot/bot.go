@@ -42,7 +42,7 @@ type quartermasterBot struct {
 
 	repository repository.Repository
 
-	// mapping of "wanted" doctrine name last notify time
+	// mapping of "requireed" doctrine name last notify time
 	notified map[string]time.Time
 }
 
@@ -98,8 +98,8 @@ func (b *quartermasterBot) Bot() error {
 	b.discord.AddHandler(b.reportHandler)
 	// Add handler to listen for "!stock" messages to list currently available doctrines in stock.
 	b.discord.AddHandler(b.stockHandler)
-	// Add handler to listen for "!want" messages to manage wanted doctrine numbers to be stocked.
-	b.discord.AddHandler(b.wantHandler)
+	// Add handler to listen for "!require" messages to manage target doctrine numbers to be stocked.
+	b.discord.AddHandler(b.requireHandler)
 
 	return b.runForever()
 }
@@ -136,12 +136,17 @@ func (b *quartermasterBot) runForever() error {
 		}
 
 		if len(notifyDoctrines) != 0 {
+			msg := b.notifyMessage(
+				filterNotifyDoctrines(notifyDoctrines, missingCorpDoctrines),
+				filterNotifyDoctrines(notifyDoctrines, missingAllianceDoctrines),
+			)
+			if msg == nil {
+				b.log.Infow("No doctrines added yet, sleeping.")
+				goto SLEEP
+			}
 			_, err = b.discord.ChannelMessageSendEmbed(
 				b.channelID,
-				b.notifyMessage(
-					filterNotifyDoctrines(notifyDoctrines, missingCorpDoctrines),
-					filterNotifyDoctrines(notifyDoctrines, missingAllianceDoctrines),
-				),
+				msg,
 			)
 			switch {
 			case err != nil:
@@ -176,16 +181,16 @@ func (b *quartermasterBot) reportMissing() ([]doctrineReport, []doctrineReport, 
 	)
 	gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
 	gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
-	wantAllDoctrines, err := b.repository.Read()
+	requireAllDoctrines, err := b.repository.Read()
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "error reading wanted doctrines")
+		return nil, nil, errors.Wrap(err, "error reading required doctrines")
 	}
 
-	wantCorporationDoctrines := filterDoctrines(wantAllDoctrines, repository.Corporation)
-	wantAllianceDoctrines := filterDoctrines(wantAllDoctrines, repository.Alliance)
+	requireCorporationDoctrines := filterDoctrines(requireAllDoctrines, repository.Corporation)
+	requireAllianceDoctrines := filterDoctrines(requireAllDoctrines, repository.Alliance)
 
-	return b.missingDoctrines(wantCorporationDoctrines, gotCorporationDoctrines),
-		b.missingDoctrines(wantAllianceDoctrines, gotAllianceDoctrines),
+	return b.missingDoctrines(requireCorporationDoctrines, gotCorporationDoctrines),
+		b.missingDoctrines(requireAllianceDoctrines, gotAllianceDoctrines),
 		nil
 }
 
@@ -200,16 +205,16 @@ func filterDoctrines(doctrines []repository.Doctrine, contractedOn repository.Co
 }
 
 func (b *quartermasterBot) missingDoctrines(
-	wantDoctrines []repository.Doctrine,
+	requireDoctrines []repository.Doctrine,
 	gotContracts map[string]int,
 ) []doctrineReport {
 	var (
 		report []doctrineReport
 	)
 
-	doctrinesDiff := diffDoctrines(wantDoctrines, gotContracts)
+	doctrinesDiff := diffDoctrines(requireDoctrines, gotContracts)
 	for _, doctrineReport := range doctrinesDiff {
-		if doctrineReport.haveInStock < doctrineReport.doctrine.WantInStock {
+		if doctrineReport.haveInStock < doctrineReport.doctrine.RequireStock {
 			report = append(report, doctrineReport)
 		}
 	}
@@ -221,7 +226,7 @@ func (b *quartermasterBot) missingDoctrines(
 }
 
 func diffDoctrines(
-	wantDoctrines []repository.Doctrine,
+	requireDoctrines []repository.Doctrine,
 	gotContracts map[string]int,
 ) map[string]doctrineReport {
 	var (
@@ -230,22 +235,22 @@ func diffDoctrines(
 
 	// Iterate over contracts, and decrement from missing map for
 	// each found doctrine ship.
-	for _, wantDoctrine := range wantDoctrines {
+	for _, requireDoctrine := range requireDoctrines {
 		found := false
 		for contractName, haveInStock := range gotContracts {
-			namesEqual := compareDoctrineNames(wantDoctrine.Name, contractName)
+			namesEqual := compareDoctrineNames(requireDoctrine.Name, contractName)
 			if namesEqual {
 				found = true
 
-				report := missing[wantDoctrine.Name]
-				report.doctrine = wantDoctrine
+				report := missing[requireDoctrine.Name]
+				report.doctrine = requireDoctrine
 				report.haveInStock += haveInStock
-				missing[wantDoctrine.Name] = report
+				missing[requireDoctrine.Name] = report
 			}
 		}
 		if !found {
-			missing[wantDoctrine.Name] = doctrineReport{
-				doctrine:    wantDoctrine,
+			missing[requireDoctrine.Name] = doctrineReport{
+				doctrine:    requireDoctrine,
 				haveInStock: 0,
 			}
 		}
@@ -314,7 +319,7 @@ func (b *quartermasterBot) filterAndGroupContracts(
 		allianceContracts []esi.GetCorporationsCorporationIdContracts200Ok
 	)
 	for _, contract := range contracts {
-		// Skip contract that are different status from what we want.
+		// Skip contract that are different status from what we require.
 		if contract.Status != status {
 			continue
 		}
@@ -353,31 +358,31 @@ func doctrinesAvailable(contracts []esi.GetCorporationsCorporationIdContracts200
 	return out
 }
 
-func compareDoctrineNames(want, have string) bool {
-	wantParts := strings.Split(want, " ")
+func compareDoctrineNames(require, have string) bool {
+	requireParts := strings.Split(require, " ")
 	haveParts := strings.Split(have, " ")
 
-	var wantPartsEqual int
-	for _, wantPart := range wantParts {
-		wantPartLower := strings.ToLower(wantPart)
+	var requirePartsEqual int
+	for _, requirePart := range requireParts {
+		requirePartLower := strings.ToLower(requirePart)
 
 		for _, havePart := range haveParts {
 			havePartLower := strings.ToLower(havePart)
-			if wantPartLower == havePartLower {
-				wantPartsEqual++
+			if requirePartLower == havePartLower {
+				requirePartsEqual++
 			}
 		}
 	}
 
-	// Simple check went OK, all wantParts are found in haveParts.
-	if wantPartsEqual >= len(wantParts) {
+	// Simple check went OK, all requireParts are found in haveParts.
+	if requirePartsEqual >= len(requireParts) {
 		return true
 	}
 	// Otherwise try similarity check.
 	// This matches more complicated names containing () and so on.
 	metric := metrics.NewJaccard()
 	metric.CaseSensitive = false
-	similarity := strutil.Similarity(want, have, metric)
+	similarity := strutil.Similarity(require, have, metric)
 	return similarity >= 0.8
 }
 
@@ -388,10 +393,10 @@ func (b *quartermasterBot) notifyMessage(missingCorporationDoctrines, missingAll
 	if len(missingAllianceDoctrines) != 0 {
 		parts = append(parts, ":exclamation: ***Alliance contracts***")
 		for _, missingDoctrine := range missingAllianceDoctrines {
-			parts = append(parts, fmt.Sprintf("**%s** is low in stock, got %d but want %d",
+			parts = append(parts, fmt.Sprintf("**%s** is low in stock, have %d but require %d",
 				missingDoctrine.doctrine.Name,
 				missingDoctrine.haveInStock,
-				missingDoctrine.doctrine.WantInStock,
+				missingDoctrine.doctrine.RequireStock,
 			))
 		}
 	}
@@ -400,12 +405,16 @@ func (b *quartermasterBot) notifyMessage(missingCorporationDoctrines, missingAll
 	if len(missingCorporationDoctrines) != 0 {
 		parts = append(parts, "\n :grey_exclamation: ***Corporation contracts***")
 		for _, missingDoctrine := range missingCorporationDoctrines {
-			parts = append(parts, fmt.Sprintf("**%s** is low in stock, got %d but want %d",
+			parts = append(parts, fmt.Sprintf("**%s** is low in stock, have %d but require %d",
 				missingDoctrine.doctrine.Name,
 				missingDoctrine.haveInStock,
-				missingDoctrine.doctrine.WantInStock,
+				missingDoctrine.doctrine.RequireStock,
 			))
 		}
+	}
+
+	if len(parts) == 0 {
+		return nil
 	}
 
 	var color = 0xff0000
@@ -443,4 +452,23 @@ func (b *quartermasterBot) wasNotified(doctrineName string) bool {
 		return false
 	}
 	return true
+}
+
+func (b *quartermasterBot) sendError(errIn error, m *discordgo.MessageCreate) {
+	msg := fmt.Sprintf("Sorry, some error happened: %s", errIn.Error())
+	_, err := b.discord.ChannelMessageSend(m.ChannelID, msg)
+	if err != nil {
+		b.log.Errorw("error responding with error", "error", err, "original_error", errIn)
+	}
+}
+
+func (b *quartermasterBot) sendNoDoctrinesAddedMessage(m *discordgo.MessageCreate) {
+	msg := "Nothing added yet, use `!require` command to add doctrines, or check `!help` for more information."
+	_, err := b.discord.ChannelMessageSend(
+		m.ChannelID,
+		msg,
+	)
+	if err != nil {
+		b.log.Errorw("error sending help report full message", "error", err)
+	}
 }

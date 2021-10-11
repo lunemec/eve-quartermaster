@@ -24,7 +24,7 @@ const (
 
 type Doctrine struct {
 	Name         string       `json:"name"`
-	WantInStock  int          `json:"want_in_stock"`
+	RequireStock int          `json:"require_stock"`
 	ContractedOn ContractedOn `json:"contracted_on"`
 }
 
@@ -66,7 +66,7 @@ func (r *jsonRepository) Read() ([]Doctrine, error) {
 	return out, nil
 }
 
-func (r *jsonRepository) Write(wantInStock []Doctrine) error {
+func (r *jsonRepository) Write(requireStock []Doctrine) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -76,7 +76,7 @@ func (r *jsonRepository) Write(wantInStock []Doctrine) error {
 	}
 	defer f.Close()
 
-	data, err := json.Marshal(wantInStock)
+	data, err := json.Marshal(requireStock)
 	if err != nil {
 		return errors.Wrap(err, "error encoding repository file")
 	}
@@ -92,7 +92,7 @@ func (r *jsonRepository) Write(wantInStock []Doctrine) error {
 	return nil
 }
 
-func (r *jsonRepository) Set(doctrineName string, wantInStock int, contractOn ContractedOn) error {
+func (r *jsonRepository) Set(doctrineName string, requireStock int, contractOn ContractedOn) error {
 	updatedDoctrines, err := r.Read()
 	if err != nil {
 		return errors.Wrap(err, "error reading current saved doctrines")
@@ -103,7 +103,7 @@ func (r *jsonRepository) Set(doctrineName string, wantInStock int, contractOn Co
 		removeIdx int
 	)
 
-	if wantInStock == 0 {
+	if requireStock == 0 {
 		remove = true
 	}
 
@@ -112,7 +112,7 @@ func (r *jsonRepository) Set(doctrineName string, wantInStock int, contractOn Co
 			found = true
 			removeIdx = i
 
-			savedDoctrine.WantInStock = wantInStock
+			savedDoctrine.RequireStock = requireStock
 			savedDoctrine.ContractedOn = contractOn
 			updatedDoctrines[i] = savedDoctrine
 		}
@@ -123,7 +123,7 @@ func (r *jsonRepository) Set(doctrineName string, wantInStock int, contractOn Co
 	if !found && !remove {
 		updatedDoctrines = append(updatedDoctrines, Doctrine{
 			Name:         doctrineName,
-			WantInStock:  wantInStock,
+			RequireStock: requireStock,
 			ContractedOn: contractOn,
 		})
 	}

@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -45,12 +44,7 @@ func (b *quartermasterBot) parseExcelHandler(s *discordgo.Session, m *discordgo.
 			if err != nil {
 				b.log.Errorw("error reacting with :x:", "error", err)
 			}
-			msg := fmt.Sprintf("Sorry, some error happened: %s", err.Error())
-			_, err := b.discord.ChannelMessageSend(m.ChannelID, msg)
-			if err != nil {
-				b.log.Errorw("error responding with error", "error", err)
-				return
-			}
+			b.sendError(err, m)
 			return
 		}
 		err = b.discord.MessageReactionAdd(m.ChannelID, m.ID, `👍`)
@@ -77,7 +71,7 @@ func parseExcel(input string) []repository.Doctrine {
 		}
 		out = append(out, repository.Doctrine{
 			Name:         name,
-			WantInStock:  num,
+			RequireStock: num,
 			ContractedOn: repository.ContractedOn(contract),
 		})
 	}

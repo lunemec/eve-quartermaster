@@ -4,7 +4,6 @@ import (
 	"encoding/gob"
 	"net/http"
 	"os"
-	"sync"
 
 	"github.com/lunemec/eve-quartermaster/pkg/token"
 
@@ -33,10 +32,7 @@ type handler struct {
 
 type nameCache map[int32]esi.GetUniverseTypesTypeIdOk
 type cache struct {
-	names         nameCache
-	nameLock      sync.RWMutex
-	windowsToOpen []int32
-	windowsLock   sync.RWMutex
+	names nameCache
 }
 
 type handlerLogger interface {

@@ -17,19 +17,19 @@ func (b *quartermasterBot) helpHandler(s *discordgo.Session, m *discordgo.Messag
 	if m.Content != "!help" && m.Content != "!quartermaster" {
 		return
 	}
-	msg := "I will notify you periodically when doctrine ships" +
-		"are missing from contracts compared to what is wanted. \n\n" +
+	msg := "I'll keep you updated about our current doctrine ship stock listed on contracts. \n\n" +
 		"Here is the list of commands you can use:\n" +
 		"`!help` or `!quartermaster` - shows this help message\n" +
 		"`!report` or `!qm` - shows a report of missing stock\n" +
-		"`!report full` - shows full report of wanted doctrines with stock/missing counts\n" +
+		"`!report full` - shows full report of required doctrines with stock/missing counts\n" +
 		"`!stock` - shows currently available ships on contract\n" +
-		"`!want NN Doctrine name` - we want to have `Doctrine name` `NN` times on contract (0 to remove)\n" +
-		"`!want list` - list of ships we want to have on contract\n" +
+		"`!require NN Alliance|Corporation Doctrine name` - require to have `Doctrine name` `NN`" +
+		" times on alliance or corporation contracts at all times (0 to remove)\n" +
+		"`!require list` - list of doctrine ships required to have on contract at all times\n" +
 		"`!parse excel` - parse copy+pasted columns from excel (sheet)"
 
-	b.discord.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
-		Title: "Hello, I am your Quartermaster",
+	_, err := b.discord.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
+		Title: "Hello, I'm your Quartermaster.",
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
 			URL: "https://i.imgur.com/ZwUn8DI.jpg",
 		},
@@ -37,4 +37,10 @@ func (b *quartermasterBot) helpHandler(s *discordgo.Session, m *discordgo.Messag
 		Description: msg,
 		Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
 	})
+	if err != nil {
+		if err != nil {
+			b.log.Errorw("error sending message for !help", "error", err)
+			return
+		}
+	}
 }

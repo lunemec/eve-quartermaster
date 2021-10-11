@@ -22,13 +22,7 @@ func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.Messa
 
 		if err != nil {
 			b.log.Errorw("error loading ESI contracts", "error", err)
-
-			msg := fmt.Sprintf("Sorry, some error happened: %s", err.Error())
-			_, err := b.discord.ChannelMessageSend(m.ChannelID, msg)
-			if err != nil {
-				b.log.Errorw("error responding with error", "error", err)
-				return
-			}
+			b.sendError(err, m)
 			return
 		}
 		corporationContracts, allianceContracts := b.filterAndGroupContracts(
@@ -43,7 +37,7 @@ func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.Messa
 			stockMessage(gotCorporationDoctrines, gotAllianceDoctrines),
 		)
 		if err != nil {
-			b.log.Errorw("error sending message for !want list", "error", err)
+			b.log.Errorw("error sending message for !stock", "error", err)
 			return
 		}
 		return

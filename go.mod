@@ -14,7 +14,7 @@ require (
 	github.com/golang/protobuf v1.5.1 // indirect
 	github.com/gorilla/sessions v1.2.1
 	github.com/gregjones/httpcache v0.0.0-20190611155906-901d90724c79
-	github.com/magiconair/properties v1.8.4
+	github.com/magiconair/properties v1.8.4 // indirect
 	github.com/mitchellh/mapstructure v1.4.1 // indirect
 	github.com/pbnj/go-open v0.1.1
 	github.com/pelletier/go-toml v1.8.1 // indirect

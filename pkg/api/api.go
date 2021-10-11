@@ -74,7 +74,8 @@ func (a *api) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *api) index(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("root."))
+	// Nothing we can really do on error here.
+	_, _ = w.Write([]byte("root."))
 }
 
 func (a *api) login(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +100,6 @@ func (a *api) login(w http.ResponseWriter, r *http.Request) {
 
 	// Send the user to the URL
 	http.Redirect(w, r, url, 302)
-	return
 }
 
 func (a *api) callback(w http.ResponseWriter, r *http.Request) {

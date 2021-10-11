@@ -45,13 +45,13 @@ func init() {
 	runCmd.Flags().Int32Var(&allianceID, "alliance_id", 0, "Alliance ID for which to list contracts")
 	runCmd.Flags().DurationVar(&checkInterval, "check_interval", 30*time.Minute, "how often to check EVE ESI API (default 30min)")
 	runCmd.Flags().DurationVar(&notifyInterval, "notify_interval", 24*time.Hour, "how often to spam Discord (default 24H)")
-	runCmd.Flags().StringVar(&repositoryFile, "repository_file", "repository.json", "path to repository json to save want_in_stock data (default repository.json)")
+	runCmd.Flags().StringVar(&repositoryFile, "repository_file", "repository.json", "path to repository json to save require_stock data (default repository.json)")
 
-	runCmd.MarkFlagRequired("session_key")
-	runCmd.MarkFlagRequired("eve_client_id")
-	runCmd.MarkFlagRequired("eve_sso_secret")
-	runCmd.MarkFlagRequired("discord_channel_id")
-	runCmd.MarkFlagRequired("discord_auth_token")
+	must(runCmd.MarkFlagRequired("session_key"))
+	must(runCmd.MarkFlagRequired("eve_client_id"))
+	must(runCmd.MarkFlagRequired("eve_sso_secret"))
+	must(runCmd.MarkFlagRequired("discord_channel_id"))
+	must(runCmd.MarkFlagRequired("discord_auth_token"))
 }
 
 func runBot(cmd *cobra.Command, args []string) {

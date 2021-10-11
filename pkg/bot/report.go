@@ -26,12 +26,7 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 				"error", err,
 			)
 
-			msg := fmt.Sprintf("Sorry, some error happened: %s", err.Error())
-			_, err := b.discord.ChannelMessageSend(m.ChannelID, msg)
-			if err != nil {
-				b.log.Errorw("error responding with error", "error", err)
-				return
-			}
+			b.sendError(err, m)
 			return
 		}
 		corporationMessage, allianceMessage := b.reportFullMessage(
@@ -41,19 +36,28 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 			soldAllianceDoctrines,
 		)
 
-		_, err = b.discord.ChannelMessageSendEmbed(
-			m.ChannelID,
-			allianceMessage,
-		)
-		if err != nil {
-			b.log.Errorw("error sending alliance report message", "error", err)
+		if allianceMessage == nil && corporationMessage == nil {
+			b.sendNoDoctrinesAddedMessage(m)
+			return
 		}
-		_, err = b.discord.ChannelMessageSendEmbed(
-			m.ChannelID,
-			corporationMessage,
-		)
-		if err != nil {
-			b.log.Errorw("error sending corporation report message", "error", err)
+
+		if allianceMessage != nil {
+			_, err = b.discord.ChannelMessageSendEmbed(
+				m.ChannelID,
+				allianceMessage,
+			)
+			if err != nil {
+				b.log.Errorw("error sending alliance report message", "error", err)
+			}
+		}
+		if corporationMessage != nil {
+			_, err = b.discord.ChannelMessageSendEmbed(
+				m.ChannelID,
+				corporationMessage,
+			)
+			if err != nil {
+				b.log.Errorw("error sending corporation report message", "error", err)
+			}
 		}
 		return
 	}
@@ -64,18 +68,17 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 			b.log.Errorw("Error checking for missing doctrines",
 				"error", err,
 			)
-
-			msg := fmt.Sprintf("Sorry, some error happened: %s", err.Error())
-			_, err := b.discord.ChannelMessageSend(m.ChannelID, msg)
-			if err != nil {
-				b.log.Errorw("error responding with error", "error", err)
-				return
-			}
+			b.sendError(err, m)
+			return
+		}
+		msg := b.notifyMessage(missingCorporationDoctrines, missingAllianceDoctrines)
+		if msg == nil {
+			b.sendNoDoctrinesAddedMessage(m)
 			return
 		}
 		_, err = b.discord.ChannelMessageSendEmbed(
 			m.ChannelID,
-			b.notifyMessage(missingCorporationDoctrines, missingAllianceDoctrines),
+			msg,
 		)
 		if err != nil {
 			b.log.Errorw("error sending report message", "error", err)
@@ -103,9 +106,9 @@ func (b *quartermasterBot) reportFull() (
 	)
 	gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
 	gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
-	wantAllDoctrines, err := b.repository.Read()
+	requireAllDoctrines, err := b.repository.Read()
 	if err != nil {
-		return nil, nil, nil, nil, errors.Wrap(err, "error reading wanted doctrines")
+		return nil, nil, nil, nil, errors.Wrap(err, "error reading required doctrines")
 	}
 
 	// Get list of finished contracts to see how many sell per month.
@@ -118,23 +121,23 @@ func (b *quartermasterBot) reportFull() (
 	finishedCorporationDoctrines := doctrinesAvailable(finishedCorporationContracts)
 	finishedAllianceDoctrines := doctrinesAvailable(finishedAllianceContracts)
 
-	wantCorporationDoctrines := filterDoctrines(wantAllDoctrines, repository.Corporation)
-	wantAllianceDoctrines := filterDoctrines(wantAllDoctrines, repository.Alliance)
+	requireCorporationDoctrines := filterDoctrines(requireAllDoctrines, repository.Corporation)
+	requireAllianceDoctrines := filterDoctrines(requireAllDoctrines, repository.Alliance)
 
-	return b.fullDoctrines(wantCorporationDoctrines, gotCorporationDoctrines),
-		b.soldDoctrines(wantCorporationDoctrines, finishedCorporationDoctrines),
-		b.fullDoctrines(wantAllianceDoctrines, gotAllianceDoctrines),
-		b.soldDoctrines(wantAllianceDoctrines, finishedAllianceDoctrines),
+	return b.fullDoctrines(requireCorporationDoctrines, gotCorporationDoctrines),
+		b.soldDoctrines(requireCorporationDoctrines, finishedCorporationDoctrines),
+		b.fullDoctrines(requireAllianceDoctrines, gotAllianceDoctrines),
+		b.soldDoctrines(requireAllianceDoctrines, finishedAllianceDoctrines),
 		nil
 }
 
 func (b *quartermasterBot) fullDoctrines(
-	wantDoctrines []repository.Doctrine,
+	requireDoctrines []repository.Doctrine,
 	gotDoctrines map[string]int,
 ) []doctrineReport {
 	var doctrines []doctrineReport
 
-	doctrinesDiff := diffDoctrines(wantDoctrines, gotDoctrines)
+	doctrinesDiff := diffDoctrines(requireDoctrines, gotDoctrines)
 	for _, doctrine := range doctrinesDiff {
 		doctrines = append(doctrines, doctrine)
 	}
@@ -146,19 +149,19 @@ func (b *quartermasterBot) fullDoctrines(
 }
 
 func (b *quartermasterBot) soldDoctrines(
-	wantDoctrines []repository.Doctrine,
+	requireDoctrines []repository.Doctrine,
 	gotDoctrines map[string]int,
 ) map[string]int {
 	var doctrines = make(map[string]int)
-	for _, wantDoctrine := range wantDoctrines {
-		if wantDoctrine.WantInStock == 0 {
+	for _, requiredDoctrine := range requireDoctrines {
+		if requiredDoctrine.RequireStock == 0 {
 			continue
 		}
 		for doctrine, count := range gotDoctrines {
-			namesEqual := compareDoctrineNames(wantDoctrine.Name, doctrine)
+			namesEqual := compareDoctrineNames(requiredDoctrine.Name, doctrine)
 
 			if namesEqual {
-				doctrines[wantDoctrine.Name] += count
+				doctrines[requiredDoctrine.Name] += count
 			}
 		}
 	}
@@ -173,33 +176,33 @@ func (b *quartermasterBot) reportFullMessage(
 ) (*discordgo.MessageEmbed, *discordgo.MessageEmbed) {
 	var (
 		partsCorporation, partsAlliance []string
-		msgOK                           = ":small_blue_diamond: **%s** [%d/mo] - got %d, want %d"
-		msgMissing                      = ":small_orange_diamond: **%s** [%d/mo] - got %d, want %d"
+		msgOK                           = ":small_blue_diamond: **%s** [%d/mo] - stocked %d, required %d"
+		msgMissing                      = ":small_orange_diamond: **%s** [%d/mo] - stocked %d, required %d"
 	)
 
 	for _, doctrine := range allianceDoctrines {
 		msg := msgOK
-		if doctrine.haveInStock < doctrine.doctrine.WantInStock {
+		if doctrine.haveInStock < doctrine.doctrine.RequireStock {
 			msg = msgMissing
 		}
 		partsAlliance = append(partsAlliance, fmt.Sprintf(msg,
 			doctrine.doctrine.Name,
 			soldAllianceDoctrines[doctrine.doctrine.Name],
 			doctrine.haveInStock,
-			doctrine.doctrine.WantInStock,
+			doctrine.doctrine.RequireStock,
 		))
 	}
 
 	for _, doctrine := range corporationDoctrines {
 		msg := msgOK
-		if doctrine.haveInStock < doctrine.doctrine.WantInStock {
+		if doctrine.haveInStock < doctrine.doctrine.RequireStock {
 			msg = msgMissing
 		}
 		partsCorporation = append(partsCorporation, fmt.Sprintf(msg,
 			doctrine.doctrine.Name,
 			soldCorporationDoctrines[doctrine.doctrine.Name],
 			doctrine.haveInStock,
-			doctrine.doctrine.WantInStock,
+			doctrine.doctrine.RequireStock,
 		))
 	}
 
