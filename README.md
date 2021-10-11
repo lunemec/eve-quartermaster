@@ -13,7 +13,7 @@ To **add 5000 Herons to be on Corporation Contract** at all times:
 ```
 
 ### Report of missing stock
-To trigger quick report of missing doctrines, use `!report` or `!qm`.
+To trigger quick report of missing doctrines, use `!report` or `!qm`.  
 ![Quartermaster quick report image](/report_small.png "Quartermaster quick report")
 
 ### Periodic reminder of missing stock
@@ -22,7 +22,7 @@ The bot will call EVE ESI every `--check_interval` and will send quick report to
 ### Full report
 Full report contains all doctrine ships that were added using `!require`, regardless of the stock.
 
-You can use this to easily see what is required, how many do you have in stock, and how many contract of each were accepted per month.
+You can use this to easily see what is required, how many do you have in stock, and how many contract of each were accepted per month.  
 ![Quartermaster full report image](report_full.png "Quartermaster full report")
 
 ### Bulk add
