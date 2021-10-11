@@ -1,6 +1,6 @@
 # EVE-Quartermaster
 
-![Quartermaster help image](./help.png "Quartermaster help message")
+![Quartermaster help image](./help.png "Quartermaster help message")  
 
 ## Features
 
