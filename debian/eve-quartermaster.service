@@ -8,7 +8,7 @@ Type=simple
 User=evequartermaster
 Group=nogroup
 WorkingDirectory=/srv/eve_quartermaster
-ExecStart=/srv/eve_quartermaster/quartermaster run -s "FILLME" --discord_auth_token="FILLME" --discord_channel_id="FILLME" --eve_client_id="FILLME" --eve_sso_secret="FILLME"
+ExecStart=/srv/eve_quartermaster/quartermaster run -s "FILLME" --discord_auth_token="FILLME" --discord_channel_id="FILLME" --eve_client_id="FILLME" --eve_sso_secret="FILLME" --corporation_id="FILLME" --alliance_id="FILLME"
 Restart=on-failure
 RestartSec=60
 
