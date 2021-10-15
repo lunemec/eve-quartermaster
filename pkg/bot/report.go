@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/antihax/goesi/esi"
 	"github.com/bwmarrin/discordgo"
+	"github.com/dustin/go-humanize"
 	"github.com/lunemec/eve-quartermaster/pkg/repository"
 	"github.com/pkg/errors"
 )
@@ -20,7 +22,7 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 	}
 
 	if m.Content == "!report full" {
-		corporationDoctrines, soldCorporationDoctrines, allianceDoctrines, soldAllianceDoctrines, err := b.reportFull()
+		corporationDoctrines, soldCorporationDoctrines, allianceDoctrines, soldAllianceDoctrines, alerts, err := b.reportFull()
 		if err != nil {
 			b.log.Errorw("Error checking for missing doctrines",
 				"error", err,
@@ -29,14 +31,15 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 			b.sendError(err, m)
 			return
 		}
-		corporationMessage, allianceMessage := b.reportFullMessage(
+		corporationMessage, allianceMessage, alertMessage := b.reportFullMessage(
 			corporationDoctrines,
 			soldCorporationDoctrines,
 			allianceDoctrines,
 			soldAllianceDoctrines,
+			alerts,
 		)
 
-		if allianceMessage == nil && corporationMessage == nil {
+		if allianceMessage == nil && corporationMessage == nil && alertMessage == nil {
 			b.sendNoDoctrinesAddedMessage(m)
 			return
 		}
@@ -57,6 +60,18 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 			)
 			if err != nil {
 				b.log.Errorw("error sending corporation report message", "error", err)
+			}
+		}
+		if alertMessage != nil {
+			_, err = b.discord.ChannelMessageSendEmbed(
+				m.ChannelID,
+				alertMessage,
+			)
+			if err != nil {
+				b.log.Errorw("error sending alert report message",
+					"error", err,
+					"message", alertMessage,
+				)
 			}
 		}
 		return
@@ -92,29 +107,32 @@ func (b *quartermasterBot) reportFull() (
 	map[string]int,
 	[]doctrineReport,
 	map[string]int,
+	[]esi.GetCorporationsCorporationIdContracts200Ok,
 	error,
 ) {
 	allContracts, err := b.loadContracts()
 	if err != nil {
-		return nil, nil, nil, nil, errors.Wrap(err, "unable to load contracts")
+		return nil, nil, nil, nil, nil, errors.Wrap(err, "unable to load contracts")
 	}
 
 	corporationContracts, allianceContracts := b.filterAndGroupContracts(
 		allContracts,
-		"outstanding",
+		statusOutstanding,
+		typeItemExchange,
 		true,
 	)
 	gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
 	gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
 	requireAllDoctrines, err := b.repository.Read()
 	if err != nil {
-		return nil, nil, nil, nil, errors.Wrap(err, "error reading required doctrines")
+		return nil, nil, nil, nil, nil, errors.Wrap(err, "error reading required doctrines")
 	}
 
 	// Get list of finished contracts to see how many sell per month.
 	finishedCorporationContracts, finishedAllianceContracts := b.filterAndGroupContracts(
 		allContracts,
-		"finished",
+		statusFinished,
+		typeItemExchange,
 		false,
 	)
 	// Group them by contract title.
@@ -128,6 +146,7 @@ func (b *quartermasterBot) reportFull() (
 		b.soldDoctrines(requireCorporationDoctrines, finishedCorporationDoctrines),
 		b.fullDoctrines(requireAllianceDoctrines, gotAllianceDoctrines),
 		b.soldDoctrines(requireAllianceDoctrines, finishedAllianceDoctrines),
+		b.filterAlertContracts(allContracts),
 		nil
 }
 
@@ -173,11 +192,14 @@ func (b *quartermasterBot) reportFullMessage(
 	soldCorporationDoctrines map[string]int,
 	allianceDoctrines []doctrineReport,
 	soldAllianceDoctrines map[string]int,
-) (*discordgo.MessageEmbed, *discordgo.MessageEmbed) {
+	alerts []esi.GetCorporationsCorporationIdContracts200Ok,
+) (*discordgo.MessageEmbed, *discordgo.MessageEmbed, *discordgo.MessageEmbed) {
 	var (
-		partsCorporation, partsAlliance []string
-		msgOK                           = ":small_blue_diamond: **%s** [%d/mo] - stocked %d, required %d"
-		msgMissing                      = ":small_orange_diamond: **%s** [%d/mo] - stocked %d, required %d"
+		partsCorporation, partsAlliance, partsAlerts []string
+		msgOK                                        = ":small_blue_diamond: **%s** [%d/mo] - stocked %d, required %d"
+		msgMissing                                   = ":small_orange_diamond: **%s** [%d/mo] - stocked %d, required %d"
+		msgAlertExpired                              = "**%s**: By: **%s**, Expired: **%s**"
+		msgAlert                                     = "**%s**: By: **%s**, Type: **%s**, Status: **%s**"
 	)
 
 	for _, doctrine := range allianceDoctrines {
@@ -206,9 +228,26 @@ func (b *quartermasterBot) reportFullMessage(
 		))
 	}
 
+	for _, alert := range alerts {
+		if alert.DateExpired.Before(time.Now()) {
+			partsAlerts = append(partsAlerts, fmt.Sprintf(msgAlertExpired,
+				alert.Title,
+				b.idToName(alert.IssuerId),
+				humanize.Time(alert.DateExpired),
+			))
+			continue
+		}
+		partsAlerts = append(partsAlerts, fmt.Sprintf(msgAlert,
+			alert.Title,
+			b.idToName(alert.IssuerId),
+			alert.Type_,
+			alert.Status,
+		))
+	}
+
 	var (
-		allianceMessage, corporationMessage *discordgo.MessageEmbed
-		color                               = 0x00ff00
+		allianceMessage, corporationMessage, alertMessage *discordgo.MessageEmbed
+		color                                             = 0x00ff00
 	)
 	if len(allianceDoctrines) != 0 {
 		allianceMessage = &discordgo.MessageEmbed{
@@ -232,6 +271,17 @@ func (b *quartermasterBot) reportFullMessage(
 			Title:       ":scroll: Corporation doctrines full report",
 		}
 	}
+	if len(alerts) != 0 {
+		alertMessage = &discordgo.MessageEmbed{
+			Thumbnail: &discordgo.MessageEmbedThumbnail{
+				URL: "https://i.imgur.com/ZwUn8DI.jpg",
+			},
+			Color:       0xff0000,
+			Description: strings.Join(partsAlerts, "\n"),
+			Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
+			Title:       ":x: Problematic contracts",
+		}
+	}
 
-	return corporationMessage, allianceMessage
+	return corporationMessage, allianceMessage, alertMessage
 }

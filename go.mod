@@ -7,6 +7,7 @@ require (
 	github.com/antihax/goesi v0.0.0-20210808182544-01c98dd3fcdb
 	github.com/braintree/manners v0.0.0-20160418043613-82a8879fc5fd
 	github.com/bwmarrin/discordgo v0.23.2
+	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/go-chi/chi v4.1.2+incompatible
 	github.com/go-chi/render v1.0.1

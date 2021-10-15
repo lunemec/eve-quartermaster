@@ -27,7 +27,8 @@ func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.Messa
 		}
 		corporationContracts, allianceContracts := b.filterAndGroupContracts(
 			allContracts,
-			"outstanding",
+			statusOutstanding,
+			typeItemExchange,
 			true,
 		)
 		gotCorporationDoctrines := doctrinesAvailable(corporationContracts)

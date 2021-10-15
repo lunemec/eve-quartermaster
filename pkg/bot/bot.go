@@ -3,10 +3,12 @@ package bot
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/adrg/strutil"
@@ -44,6 +46,9 @@ type quartermasterBot struct {
 
 	// mapping of "requireed" doctrine name last notify time
 	notified map[string]time.Time
+
+	// ID -> names map
+	names *sync.Map
 }
 
 type logger interface {
@@ -81,6 +86,7 @@ func NewQuartermasterBot(
 		notifyInterval: notifyInterval,
 		repository:     repository,
 		notified:       make(map[string]time.Time),
+		names:          new(sync.Map),
 	}
 }
 
@@ -176,7 +182,8 @@ func (b *quartermasterBot) reportMissing() ([]doctrineReport, []doctrineReport, 
 
 	corporationContracts, allianceContracts := b.filterAndGroupContracts(
 		allContracts,
-		"outstanding",
+		statusOutstanding,
+		typeItemExchange,
 		true,
 	)
 	gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
@@ -306,9 +313,34 @@ func (b *quartermasterBot) loadContracts() (
 	return allContracts, nil
 }
 
+type contractStatus string
+type contractType string
+
+const (
+	// Contract Statuses.
+	statusOutstanding        contractStatus = "outstanding"
+	statusInProgress         contractStatus = "in_progress"
+	statusFinishedIssuer     contractStatus = "finished_issuer"
+	statusFinishedContractor contractStatus = "finished_contractor"
+	statusFinished           contractStatus = "finished"
+	statusCancelled          contractStatus = "cancelled"
+	statusRejected           contractStatus = "rejected"
+	statusFailed             contractStatus = "failed"
+	statusDeleted            contractStatus = "deleted"
+	statusReversed           contractStatus = "reversed"
+
+	// Contract Types.
+	typeUnknown      contractType = "unknown"
+	typeItemExchange contractType = "item_exchange"
+	typeAuction      contractType = "auction"
+	typeCourier      contractType = "courier"
+	typeLoadn        contractType = "loan"
+)
+
 func (b *quartermasterBot) filterAndGroupContracts(
 	contracts []esi.GetCorporationsCorporationIdContracts200Ok,
-	status string,
+	status contractStatus,
+	contractType contractType,
 	skipExpired bool,
 ) (
 	[]esi.GetCorporationsCorporationIdContracts200Ok,
@@ -319,8 +351,11 @@ func (b *quartermasterBot) filterAndGroupContracts(
 		allianceContracts []esi.GetCorporationsCorporationIdContracts200Ok
 	)
 	for _, contract := range contracts {
+		if contract.Type_ != string(contractType) {
+			continue
+		}
 		// Skip contract that are different status from what we require.
-		if contract.Status != status {
+		if contract.Status != string(status) {
 			continue
 		}
 		// Skip expired contracts.
@@ -336,6 +371,59 @@ func (b *quartermasterBot) filterAndGroupContracts(
 	}
 
 	return corpContracts, allianceContracts
+}
+
+func (b *quartermasterBot) filterAlertContracts(
+	contracts []esi.GetCorporationsCorporationIdContracts200Ok,
+) []esi.GetCorporationsCorporationIdContracts200Ok {
+	var (
+		alertContracts []esi.GetCorporationsCorporationIdContracts200Ok
+	)
+	for _, contract := range contracts {
+		if contract.AssigneeId != b.corporationID && contract.AssigneeId != b.allianceID {
+			continue
+		}
+
+		switch contract.Status {
+		case string(statusCancelled), string(statusDeleted), string(statusFinished), string(statusFinishedContractor), string(statusFinishedIssuer):
+			continue
+		}
+		// Alert expired contract.
+		if contract.DateExpired.Before(time.Now()) {
+			alertContracts = append(alertContracts, contract)
+			continue
+		}
+		if contract.Type_ != string(typeItemExchange) {
+			alertContracts = append(alertContracts, contract)
+			continue
+		}
+	}
+
+	return alertContracts
+}
+
+func (b *quartermasterBot) idToName(id int32) string {
+	nameInterface, ok := b.names.Load(id)
+	if !ok {
+		names, resp, err := b.esi.ESI.UniverseApi.PostUniverseNames(b.ctx, []int32{id}, nil)
+		if err != nil {
+			// Do not cache on error, so it will retry next time.
+			// Return back ID.
+			body, _ := io.ReadAll(resp.Body)
+			defer resp.Body.Close()
+			b.log.Errorw("Error translating ID to name", "error", err, "body", body)
+			return fmt.Sprint(id)
+		}
+		// If we do not have names, then return the ID back.
+		if len(names) != 1 {
+			b.log.Errorw("Error translating ID to name, returned no names", "len", len(names))
+			return fmt.Sprint(id)
+		}
+		name := names[0].Name
+		b.names.Store(id, name)
+		return name
+	}
+	return nameInterface.(string)
 }
 
 // doctrinesAvailable returns map of doctrine name -> count of contracts
