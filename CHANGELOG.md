@@ -6,6 +6,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.1] - 2021-10-15
+- Added alert about problematic contracts to "!report full" command.
+    - Problematic contracts are:
+      - Expired
+      - Not Item Exchange (auction for example)
+      - Bad state
 ## [1.0.0] - 2021-10-11
 - Version 1.0.0, many features added and polished while in use.
 ## [0.0.1] - 2021-09-18
