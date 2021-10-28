@@ -8,3 +8,4 @@ fuelbot
 pkg/bot/bot_test.go
 pkg/bot/parse_excel_test.go
 quartermaster_linux_amd64
+dist/
