@@ -3,7 +3,6 @@ package bot
 import (
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/antihax/goesi/esi"
@@ -22,6 +21,7 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 	}
 
 	if m.Content == "!report full" {
+		b.log.Infow("Responding to !report full", "channel_id", m.ChannelID)
 		corporationDoctrines, soldCorporationDoctrines, allianceDoctrines, soldAllianceDoctrines, alerts, err := b.reportFull()
 		if err != nil {
 			b.log.Errorw("Error checking for missing doctrines",
@@ -31,7 +31,7 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 			b.sendError(err, m)
 			return
 		}
-		corporationMessage, allianceMessage, alertMessage := b.reportFullMessage(
+		messages := b.reportFullMessage(
 			corporationDoctrines,
 			soldCorporationDoctrines,
 			allianceDoctrines,
@@ -39,45 +39,25 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 			alerts,
 		)
 
-		if allianceMessage == nil && corporationMessage == nil && alertMessage == nil {
+		if len(messages) == 0 {
 			b.sendNoDoctrinesAddedMessage(m)
 			return
 		}
 
-		if allianceMessage != nil {
+		for _, message := range messages {
 			_, err = b.discord.ChannelMessageSendEmbed(
 				m.ChannelID,
-				allianceMessage,
+				message,
 			)
 			if err != nil {
-				b.log.Errorw("error sending alliance report message", "error", err)
-			}
-		}
-		if corporationMessage != nil {
-			_, err = b.discord.ChannelMessageSendEmbed(
-				m.ChannelID,
-				corporationMessage,
-			)
-			if err != nil {
-				b.log.Errorw("error sending corporation report message", "error", err)
-			}
-		}
-		if alertMessage != nil {
-			_, err = b.discord.ChannelMessageSendEmbed(
-				m.ChannelID,
-				alertMessage,
-			)
-			if err != nil {
-				b.log.Errorw("error sending alert report message",
-					"error", err,
-					"message", alertMessage,
-				)
+				b.log.Errorw("error sending message report message", "error", err)
 			}
 		}
 		return
 	}
 
 	if m.Content == "!report" || m.Content == "!qm" {
+		b.log.Infow("Responding to !qm command", "channel_id", m.ChannelID)
 		missingCorporationDoctrines, missingAllianceDoctrines, err := b.reportMissing()
 		if err != nil {
 			b.log.Errorw("Error checking for missing doctrines",
@@ -86,17 +66,19 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 			b.sendError(err, m)
 			return
 		}
-		msg := b.notifyMessage(missingCorporationDoctrines, missingAllianceDoctrines)
-		if msg == nil {
+		messages := b.notifyMessage(missingCorporationDoctrines, missingAllianceDoctrines)
+		if len(messages) == 0 {
 			b.sendNoDoctrinesAddedMessage(m)
 			return
 		}
-		_, err = b.discord.ChannelMessageSendEmbed(
-			m.ChannelID,
-			msg,
-		)
-		if err != nil {
-			b.log.Errorw("error sending report message", "error", err)
+		for _, message := range messages {
+			_, err = b.discord.ChannelMessageSendEmbed(
+				m.ChannelID,
+				message,
+			)
+			if err != nil {
+				b.log.Errorw("error sending report message", "error", err)
+			}
 		}
 		return
 	}
@@ -193,7 +175,7 @@ func (b *quartermasterBot) reportFullMessage(
 	allianceDoctrines []doctrineReport,
 	soldAllianceDoctrines map[string]int,
 	alerts []esi.GetCorporationsCorporationIdContracts200Ok,
-) (*discordgo.MessageEmbed, *discordgo.MessageEmbed, *discordgo.MessageEmbed) {
+) []*discordgo.MessageEmbed {
 	var (
 		partsCorporation, partsAlliance, partsAlerts []string
 		msgOK                                        = ":small_blue_diamond: **%s** [%d/mo] - stocked %d, required %d"
@@ -207,12 +189,13 @@ func (b *quartermasterBot) reportFullMessage(
 		if doctrine.haveInStock < doctrine.doctrine.RequireStock {
 			msg = msgMissing
 		}
-		partsAlliance = append(partsAlliance, fmt.Sprintf(msg,
+		part := fmt.Sprintf(msg,
 			doctrine.doctrine.Name,
 			soldAllianceDoctrines[doctrine.doctrine.Name],
 			doctrine.haveInStock,
 			doctrine.doctrine.RequireStock,
-		))
+		)
+		partsAlliance = append(partsAlliance, part)
 	}
 
 	for _, doctrine := range corporationDoctrines {
@@ -220,12 +203,13 @@ func (b *quartermasterBot) reportFullMessage(
 		if doctrine.haveInStock < doctrine.doctrine.RequireStock {
 			msg = msgMissing
 		}
-		partsCorporation = append(partsCorporation, fmt.Sprintf(msg,
+		part := fmt.Sprintf(msg,
 			doctrine.doctrine.Name,
 			soldCorporationDoctrines[doctrine.doctrine.Name],
 			doctrine.haveInStock,
 			doctrine.doctrine.RequireStock,
-		))
+		)
+		partsCorporation = append(partsCorporation, part)
 	}
 
 	for _, alert := range alerts {
@@ -237,51 +221,67 @@ func (b *quartermasterBot) reportFullMessage(
 			))
 			continue
 		}
-		partsAlerts = append(partsAlerts, fmt.Sprintf(msgAlert,
+		part := fmt.Sprintf(msgAlert,
 			alert.Title,
 			b.idToName(alert.IssuerId),
 			alert.Type_,
 			alert.Status,
-		))
+		)
+		partsAlerts = append(partsAlerts, part)
 	}
 
 	var (
-		allianceMessage, corporationMessage, alertMessage *discordgo.MessageEmbed
-		color                                             = 0x00ff00
+		messages []*discordgo.MessageEmbed
+		color    = 0x00ff00
 	)
 	if len(allianceDoctrines) != 0 {
-		allianceMessage = &discordgo.MessageEmbed{
-			Thumbnail: &discordgo.MessageEmbedThumbnail{
-				URL: "https://i.imgur.com/ZwUn8DI.jpg",
-			},
-			Color:       color,
-			Description: strings.Join(partsAlliance, "\n"),
-			Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
-			Title:       ":scroll: Alliance doctrines full report",
+		allianceMessages := splitMessageParts(partsAlliance, discordMaxDescriptionLength)
+		for _, allianceMessage := range allianceMessages {
+			messages = append(messages,
+				&discordgo.MessageEmbed{
+					Thumbnail: &discordgo.MessageEmbedThumbnail{
+						URL: "https://i.imgur.com/ZwUn8DI.jpg",
+					},
+					Color:       color,
+					Description: allianceMessage,
+					Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
+					Title:       ":scroll: Doctrines full report [Alliance]",
+				},
+			)
 		}
 	}
 	if len(corporationDoctrines) != 0 {
-		corporationMessage = &discordgo.MessageEmbed{
-			Thumbnail: &discordgo.MessageEmbedThumbnail{
-				URL: "https://i.imgur.com/ZwUn8DI.jpg",
-			},
-			Color:       color,
-			Description: strings.Join(partsCorporation, "\n"),
-			Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
-			Title:       ":scroll: Corporation doctrines full report",
+		corporationMessages := splitMessageParts(partsCorporation, discordMaxDescriptionLength)
+		for _, corporationMessage := range corporationMessages {
+			messages = append(messages,
+				&discordgo.MessageEmbed{
+					Thumbnail: &discordgo.MessageEmbedThumbnail{
+						URL: "https://i.imgur.com/ZwUn8DI.jpg",
+					},
+					Color:       color,
+					Description: corporationMessage,
+					Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
+					Title:       ":scroll: Doctrines full report [Corporation]",
+				},
+			)
 		}
 	}
 	if len(alerts) != 0 {
-		alertMessage = &discordgo.MessageEmbed{
-			Thumbnail: &discordgo.MessageEmbedThumbnail{
-				URL: "https://i.imgur.com/ZwUn8DI.jpg",
-			},
-			Color:       0xff0000,
-			Description: strings.Join(partsAlerts, "\n"),
-			Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
-			Title:       ":x: Problematic contracts",
+		alertsMessages := splitMessageParts(partsAlerts, discordMaxDescriptionLength)
+		for _, allertMessage := range alertsMessages {
+			messages = append(messages,
+				&discordgo.MessageEmbed{
+					Thumbnail: &discordgo.MessageEmbedThumbnail{
+						URL: "https://i.imgur.com/ZwUn8DI.jpg",
+					},
+					Color:       0xff0000,
+					Description: allertMessage,
+					Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
+					Title:       ":x: Problematic contracts",
+				},
+			)
 		}
 	}
 
-	return corporationMessage, allianceMessage, alertMessage
+	return messages
 }

@@ -23,6 +23,8 @@ import (
 	"github.com/pkg/errors"
 )
 
+const discordMaxDescriptionLength = 4096
+
 // Bot what a bot does.
 type Bot interface {
 	Bot() error
@@ -142,30 +144,32 @@ func (b *quartermasterBot) runForever() error {
 		}
 
 		if len(notifyDoctrines) != 0 {
-			msg := b.notifyMessage(
+			messages := b.notifyMessage(
 				filterNotifyDoctrines(notifyDoctrines, missingCorpDoctrines),
 				filterNotifyDoctrines(notifyDoctrines, missingAllianceDoctrines),
 			)
-			if msg == nil {
+			if len(messages) == 0 {
 				b.log.Infow("No doctrines added yet, sleeping.")
 				goto SLEEP
 			}
-			_, err = b.discord.ChannelMessageSendEmbed(
-				b.channelID,
-				msg,
-			)
-			switch {
-			case err != nil:
-				b.log.Errorw("Error sending discord message",
-					"error", err,
+			for _, message := range messages {
+				_, err = b.discord.ChannelMessageSendEmbed(
+					b.channelID,
+					message,
 				)
-				// In case of error, we fall through to the time.Sleep
-				// block. We also do not set the structure as notified
-				// and it get picked up on next iteration.
-				goto SLEEP
-			case err == nil:
-				for notifiedDoctrine := range notifyDoctrines {
-					b.setWasNotified(notifiedDoctrine)
+				switch {
+				case err != nil:
+					b.log.Errorw("Error sending discord message",
+						"error", err,
+					)
+					// In case of error, we fall through to the time.Sleep
+					// block. We also do not set the structure as notified
+					// and it get picked up on next iteration.
+					goto SLEEP
+				case err == nil:
+					for notifiedDoctrine := range notifyDoctrines {
+						b.setWasNotified(notifiedDoctrine)
+					}
 				}
 			}
 		}
@@ -474,14 +478,15 @@ func compareDoctrineNames(require, have string) bool {
 	return similarity >= 0.8
 }
 
-func (b *quartermasterBot) notifyMessage(missingCorporationDoctrines, missingAllianceDoctrines []doctrineReport) *discordgo.MessageEmbed {
-	var parts []string
+func (b *quartermasterBot) notifyMessage(
+	missingCorporationDoctrines, missingAllianceDoctrines []doctrineReport,
+) []*discordgo.MessageEmbed {
+	var partsAlliance, partsCorporation []string
 
 	// Add "Alliance" block only if there is something to show there.
 	if len(missingAllianceDoctrines) != 0 {
-		parts = append(parts, ":exclamation: ***Alliance contracts***")
 		for _, missingDoctrine := range missingAllianceDoctrines {
-			parts = append(parts, fmt.Sprintf("**%s** is low in stock, have %d but require %d",
+			partsAlliance = append(partsAlliance, fmt.Sprintf("**%s** is low in stock, have %d but require %d",
 				missingDoctrine.doctrine.Name,
 				missingDoctrine.haveInStock,
 				missingDoctrine.doctrine.RequireStock,
@@ -491,9 +496,8 @@ func (b *quartermasterBot) notifyMessage(missingCorporationDoctrines, missingAll
 
 	// Add "Corporation" block only if there is something to show there.
 	if len(missingCorporationDoctrines) != 0 {
-		parts = append(parts, "\n :grey_exclamation: ***Corporation contracts***")
 		for _, missingDoctrine := range missingCorporationDoctrines {
-			parts = append(parts, fmt.Sprintf("**%s** is low in stock, have %d but require %d",
+			partsCorporation = append(partsCorporation, fmt.Sprintf("**%s** is low in stock, have %d but require %d",
 				missingDoctrine.doctrine.Name,
 				missingDoctrine.haveInStock,
 				missingDoctrine.doctrine.RequireStock,
@@ -501,20 +505,42 @@ func (b *quartermasterBot) notifyMessage(missingCorporationDoctrines, missingAll
 		}
 	}
 
-	if len(parts) == 0 {
-		return nil
+	var (
+		messages []*discordgo.MessageEmbed
+		color    = 0xff0000
+	)
+	if len(partsAlliance) > 0 {
+		reportMessages := splitMessageParts(partsAlliance, discordMaxDescriptionLength)
+		for _, reportMessage := range reportMessages {
+			messages = append(messages, &discordgo.MessageEmbed{
+				Thumbnail: &discordgo.MessageEmbedThumbnail{
+					URL: "https://i.imgur.com/ZwUn8DI.jpg",
+				},
+				Color:       color,
+				Description: reportMessage,
+				Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
+				Title:       "Doctrine ship stock low [Alliance]",
+			},
+			)
+		}
+	}
+	if len(partsCorporation) > 0 {
+		reportMessages := splitMessageParts(partsCorporation, discordMaxDescriptionLength)
+		for _, reportMessage := range reportMessages {
+			messages = append(messages, &discordgo.MessageEmbed{
+				Thumbnail: &discordgo.MessageEmbedThumbnail{
+					URL: "https://i.imgur.com/ZwUn8DI.jpg",
+				},
+				Color:       color,
+				Description: reportMessage,
+				Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
+				Title:       "Doctrine ship stock low [Corporation]",
+			},
+			)
+		}
 	}
 
-	var color = 0xff0000
-	return &discordgo.MessageEmbed{
-		Thumbnail: &discordgo.MessageEmbedThumbnail{
-			URL: "https://i.imgur.com/ZwUn8DI.jpg",
-		},
-		Color:       color,
-		Description: strings.Join(parts, "\n"),
-		Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
-		Title:       "Doctrine ship stock low",
-	}
+	return messages
 }
 
 // shouldNotify checks if given doctrine should be notified

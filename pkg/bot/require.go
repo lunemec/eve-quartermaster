@@ -25,21 +25,29 @@ func (b *quartermasterBot) requireHandler(s *discordgo.Session, m *discordgo.Mes
 
 	// Required list goes first so that we don't trigger both it and !require.
 	if m.Content == "!require list" {
+		b.log.Infow("Responding to !require list command", "channel_id", m.ChannelID)
 		requiredDoctrines, err := b.repository.Read()
 		if err != nil {
 			b.log.Errorw("error reading required in stock doctrines", "error", err)
 			b.sendError(err, m)
 			return
 		}
-		_, err = b.discord.ChannelMessageSendEmbed(m.ChannelID, requireListMessage(requiredDoctrines))
-		if err != nil {
-			b.log.Errorw("error sending message for !require list", "error", err)
+		messages := requireListMessage(requiredDoctrines)
+		if len(messages) == 0 {
+			b.sendNoDoctrinesAddedMessage(m)
 			return
+		}
+		for _, message := range messages {
+			_, err = b.discord.ChannelMessageSendEmbed(m.ChannelID, message)
+			if err != nil {
+				b.log.Errorw("error sending message for !require list", "error", err)
+			}
 		}
 		return
 	}
 
 	if strings.HasPrefix(m.Content, "!require") {
+		b.log.Infow("Responding to !require command", "channel_id", m.ChannelID)
 		// Format is: "!require NN alliance|corporation Doctrine name", example: "!require 10 Alliance Shield Drake"
 		commandContent := strings.TrimPrefix(m.Content, "!require ")
 		matches := requireRegex.FindAllStringSubmatch(commandContent, -1)
@@ -81,7 +89,7 @@ func (b *quartermasterBot) requireHandler(s *discordgo.Session, m *discordgo.Mes
 	}
 }
 
-func requireListMessage(requiredDoctrines []repository.Doctrine) *discordgo.MessageEmbed {
+func requireListMessage(requiredDoctrines []repository.Doctrine) []*discordgo.MessageEmbed {
 	var (
 		partsCorporation, partsAlliance []string
 	)
@@ -91,33 +99,49 @@ func requireListMessage(requiredDoctrines []repository.Doctrine) *discordgo.Mess
 	})
 
 	for _, doctrine := range filterDoctrines(requiredDoctrines, repository.Corporation) {
-		partsCorporation = append(partsCorporation, fmt.Sprintf("%d %s", doctrine.RequireStock, doctrine.Name))
+		partsCorporation = append(partsCorporation, fmt.Sprintf("**%s** %d", doctrine.Name, doctrine.RequireStock))
 	}
 
 	for _, doctrine := range filterDoctrines(requiredDoctrines, repository.Alliance) {
-		partsAlliance = append(partsAlliance, fmt.Sprintf("%d %s", doctrine.RequireStock, doctrine.Name))
+		partsAlliance = append(partsAlliance, fmt.Sprintf("**%s** %d", doctrine.Name, doctrine.RequireStock))
 	}
 
-	var msg = "Nothing has been added yet, add items using `!require` or see `!help`."
-	if len(partsAlliance) != 0 || len(partsCorporation) != 0 {
-		msg = ""
-		if len(partsAlliance) != 0 {
-			msg += fmt.Sprintf("**Alliance contracts**\n```\n%s\n```\n", strings.Join(partsAlliance, "\n"))
+	var (
+		messages []*discordgo.MessageEmbed
+	)
+
+	if len(partsAlliance) > 0 {
+		messageParts := splitMessageParts(partsAlliance, discordMaxDescriptionLength)
+		for _, message := range messageParts {
+			messages = append(messages, &discordgo.MessageEmbed{
+				Title: "Target stock [Alliance]",
+				Thumbnail: &discordgo.MessageEmbedThumbnail{
+					URL: "https://i.imgur.com/ZwUn8DI.jpg",
+				},
+				Color:       0x00ff00,
+				Description: message,
+				Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
+			},
+			)
 		}
-		if len(partsCorporation) != 0 {
-			msg += fmt.Sprintf("**Corporation contracts**\n```\n%s\n```\n", strings.Join(partsCorporation, "\n"))
+	}
+	if len(partsCorporation) > 0 {
+		messageParts := splitMessageParts(partsCorporation, discordMaxDescriptionLength)
+		for _, message := range messageParts {
+			messages = append(messages, &discordgo.MessageEmbed{
+				Title: "Target stock [Corporation]",
+				Thumbnail: &discordgo.MessageEmbedThumbnail{
+					URL: "https://i.imgur.com/ZwUn8DI.jpg",
+				},
+				Color:       0x00ff00,
+				Description: message,
+				Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
+			},
+			)
 		}
 	}
 
-	return &discordgo.MessageEmbed{
-		Title: "Target stock",
-		Thumbnail: &discordgo.MessageEmbedThumbnail{
-			URL: "https://i.imgur.com/ZwUn8DI.jpg",
-		},
-		Color:       0x00ff00,
-		Description: msg,
-		Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
-	}
+	return messages
 }
 
 func validateContractOn(input string) (repository.ContractedOn, error) {

@@ -3,7 +3,6 @@ package bot
 import (
 	"fmt"
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/bwmarrin/discordgo"
@@ -18,6 +17,7 @@ func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.Messa
 	}
 
 	if m.Content == "!stock" {
+		b.log.Infow("Responding to !stock command", "channel_id", m.ChannelID)
 		allContracts, err := b.loadContracts()
 
 		if err != nil {
@@ -33,19 +33,21 @@ func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.Messa
 		)
 		gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
 		gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
-		_, err = b.discord.ChannelMessageSendEmbed(
-			m.ChannelID,
-			stockMessage(gotCorporationDoctrines, gotAllianceDoctrines),
-		)
-		if err != nil {
-			b.log.Errorw("error sending message for !stock", "error", err)
-			return
+		stockMessages := stockMessage(gotCorporationDoctrines, gotAllianceDoctrines)
+		for _, message := range stockMessages {
+			_, err = b.discord.ChannelMessageSendEmbed(
+				m.ChannelID,
+				message,
+			)
+			if err != nil {
+				b.log.Errorw("error sending message for !stock", "error", err)
+			}
 		}
 		return
 	}
 }
 
-func stockMessage(corporationDoctrines, allianceDoctrines map[string]int) *discordgo.MessageEmbed {
+func stockMessage(corporationDoctrines, allianceDoctrines map[string]int) []*discordgo.MessageEmbed {
 	var (
 		namesCorporation, namesAlliance []string // used for sorting by name
 		partsCorporation, partsAlliance []string
@@ -62,26 +64,54 @@ func stockMessage(corporationDoctrines, allianceDoctrines map[string]int) *disco
 	sort.Strings(namesAlliance)
 
 	for _, name := range namesCorporation {
-		partsCorporation = append(partsCorporation, fmt.Sprintf("%d %s", corporationDoctrines[name], name))
+		if name == "" {
+			continue
+		}
+		partsCorporation = append(partsCorporation, fmt.Sprintf("**%s** %d", name, corporationDoctrines[name]))
 	}
 
 	for _, name := range namesAlliance {
-		partsAlliance = append(partsAlliance, fmt.Sprintf("%d %s", allianceDoctrines[name], name))
+		if name == "" {
+			continue
+		}
+		partsAlliance = append(partsAlliance, fmt.Sprintf("**%s** %d", name, allianceDoctrines[name]))
 	}
 
-	msg := fmt.Sprintf(
-		"**Alliance contracts**\n```\n%s\n```\n**Corporation contracts**\n```\n%s\n```",
-		strings.Join(partsAlliance, "\n"),
-		strings.Join(partsCorporation, "\n"),
-	)
+	var messages []*discordgo.MessageEmbed
 
-	return &discordgo.MessageEmbed{
-		Title: "Have on contract",
-		Thumbnail: &discordgo.MessageEmbedThumbnail{
-			URL: "https://i.imgur.com/ZwUn8DI.jpg",
-		},
-		Color:       0x00ff00,
-		Description: msg,
-		Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
+	if len(partsAlliance) > 0 {
+		messageParts := splitMessageParts(partsAlliance, discordMaxDescriptionLength)
+		for _, message := range messageParts {
+			messages = append(messages,
+				&discordgo.MessageEmbed{
+					Title: "On contract [Alliance]",
+					Thumbnail: &discordgo.MessageEmbedThumbnail{
+						URL: "https://i.imgur.com/ZwUn8DI.jpg",
+					},
+					Color:       0x00ff00,
+					Description: message,
+					Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
+				},
+			)
+		}
 	}
+
+	if len(partsCorporation) > 0 {
+		messageParts := splitMessageParts(partsCorporation, discordMaxDescriptionLength)
+		for _, message := range messageParts {
+			messages = append(messages,
+				&discordgo.MessageEmbed{
+					Title: "On contract [Corporation]",
+					Thumbnail: &discordgo.MessageEmbedThumbnail{
+						URL: "https://i.imgur.com/ZwUn8DI.jpg",
+					},
+					Color:       0x00ff00,
+					Description: message,
+					Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
+				},
+			)
+		}
+	}
+
+	return messages
 }
