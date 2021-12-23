@@ -1,4 +1,4 @@
-package bot
+package discord
 
 import (
 	"fmt"
@@ -17,7 +17,7 @@ var requireRegex = regexp.MustCompile(`^(?P<number>[0-9]+)\s(?P<contract>[Aa]lli
 
 // requireHandler will be called every time a new
 // message is created on any channel that the autenticated bot has access to.
-func (b *quartermasterBot) requireHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
+func (h *discordHandler) requireHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Ignore all messages created by the bot itself.
 	if m.Author.ID == s.State.User.ID {
 		return

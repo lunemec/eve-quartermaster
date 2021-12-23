@@ -1,14 +1,15 @@
-package bot
+package discord
 
 import (
 	"time"
 
 	"github.com/bwmarrin/discordgo"
+	"go.uber.org/zap"
 )
 
 // helpHandler will be called every time a new
 // message is created on any channel that the autenticated bot has access to.
-func (b *quartermasterBot) helpHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
+func (h *discordHandler) helpHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Ignore all messages created by the bot itself.
 	if m.Author.ID == s.State.User.ID {
 		return
@@ -28,7 +29,7 @@ func (b *quartermasterBot) helpHandler(s *discordgo.Session, m *discordgo.Messag
 		"`!require list` - list of doctrine ships required to have on contract at all times\n" +
 		"`!parse excel` - parse copy+pasted columns from excel (sheet)"
 
-	_, err := b.discord.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
+	_, err := h.discord.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
 		Title: "Hello, I'm your Quartermaster.",
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
 			URL: "https://i.imgur.com/ZwUn8DI.jpg",
@@ -39,7 +40,7 @@ func (b *quartermasterBot) helpHandler(s *discordgo.Session, m *discordgo.Messag
 	})
 	if err != nil {
 		if err != nil {
-			b.log.Errorw("error sending message for !help", "error", err)
+			h.log.Error("error sending message for !help", zap.Error(err))
 			return
 		}
 	}

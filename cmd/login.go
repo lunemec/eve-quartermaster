@@ -8,8 +8,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/lunemec/eve-quartermaster/pkg/handler"
-	"github.com/lunemec/eve-quartermaster/pkg/token"
+	httpHandler "github.com/lunemec/eve-quartermaster/pkg/handlers/http"
+	authRepository "github.com/lunemec/eve-quartermaster/pkg/repositories/auth"
+	authService "github.com/lunemec/eve-quartermaster/pkg/services/auth"
 
 	"github.com/braintree/manners"
 	open "github.com/pbnj/go-open"
@@ -37,11 +38,10 @@ func init() {
 }
 
 func runLogin(cmd *cobra.Command, args []string) {
-	fastLog, err := zap.NewDevelopment()
+	logger, err := zap.NewDevelopment()
 	if err != nil {
 		panic(fmt.Sprintf("error inicializing logger: %v", err))
 	}
-	log := fastLog.Sugar()
 	signalChan := make(chan os.Signal, 1)
 	// Notify signalChan on SIGINT and SIGTERM.
 	signal.Notify(signalChan, syscall.SIGINT, syscall.SIGTERM)
@@ -52,12 +52,24 @@ func runLogin(cmd *cobra.Command, args []string) {
 			panic(fmt.Sprintf("unable to delete file: %s please remove it by hand", authfile))
 		}
 	}
+	httpClientInstance := httpClient()
 
-	handler := handler.New(
+	authRepository := authRepository.NewAuthRepository(authfile)
+	authService := authService.NewService(
+		logger,
+		httpClientInstance,
+		authRepository,
+		[]byte(sessionKey),
+		eveClientID,
+		eveSSOSecret,
+		eveCallbackURL,
+		eveScopes,
+	)
+	handler := httpHandler.New(
 		signalChan,
-		log,
-		httpClient(),
-		token.NewFileStorage(authfile),
+		logger,
+		httpClientInstance,
+		authService,
 		[]byte(sessionKey),
 		eveClientID,
 		eveSSOSecret,
@@ -73,24 +85,23 @@ func runLogin(cmd *cobra.Command, args []string) {
 
 	go func() {
 		for s := range signalChan {
-			log.Infof("Captured %v. Exiting...", s)
+			logger.Info(fmt.Sprintf("Captured %v. Exiting...", s))
 			server.Close()
 		}
 	}()
 
 	// Open default web browser after 1s.
-	go func() {
+	time.AfterFunc(1*time.Second, func() {
 		openAddr := fmt.Sprintf("http://%s", addr)
-		time.Sleep(1 * time.Second)
-		log.Infof("Opening browser at %s", openAddr)
+		logger.Info("Opening browser at address", zap.String("addr", openAddr))
 		err := open.Open(openAddr)
 		if err != nil {
-			log.Error("Error opening browser", "error", err)
+			logger.Error("Error opening browser", zap.Error(err))
 		}
-	}()
+	})
 
-	log.Infof("Listening on %v", addr)
+	logger.Info("Listening on address", zap.String("addr", addr))
 	if err := server.ListenAndServe(); err != nil {
-		log.Errorf("ListenAndServe error: %v", err)
+		logger.Error("ListenAndServe error", zap.Error(err))
 	}
 }

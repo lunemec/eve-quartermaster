@@ -2,13 +2,14 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"time"
 
-	"github.com/lunemec/eve-quartermaster/pkg/bot"
-	"github.com/lunemec/eve-quartermaster/pkg/repository"
-	"github.com/lunemec/eve-quartermaster/pkg/token"
+	authRepository "github.com/lunemec/eve-quartermaster/repositories/auth"
+	authService "github.com/lunemec/eve-quartermaster/services/auth"
 
 	"github.com/bwmarrin/discordgo"
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
@@ -55,19 +56,25 @@ func init() {
 }
 
 func runBot(cmd *cobra.Command, args []string) {
-	fastLog, err := zap.NewDevelopment()
+	log, err := zap.NewDevelopment()
 	if err != nil {
-		panic(fmt.Sprintf("error inicializing logger: %s", err))
+		fmt.Printf("error inicializing logger: %s \n", err)
+		os.Exit(1)
 	}
-	log := fastLog.Sugar()
+	err = runWrapper(log, cmd, args)
+	if err != nil {
+		log.Fatal("error running bot", zap.Error(err))
+	}
+}
 
+func runWrapper(log *zap.Logger, cmd *cobra.Command, args []string) error {
 	client := httpClient()
 
-	tokenStorage := token.NewFileStorage(authfile)
-	tokenSource := token.NewSource(
+	authRepository := authRepository.NewFileRepository()
+	authService := authService.NewService(
 		log,
 		client,
-		tokenStorage,
+		authRepository,
 		[]byte(sessionKey),
 		eveClientID,
 		eveSSOSecret,
@@ -77,12 +84,16 @@ func runBot(cmd *cobra.Command, args []string) {
 
 	discord, err := discordgo.New("Bot " + discordAuthToken)
 	if err != nil {
-		panic(fmt.Sprintf("error inicializing discord client: %+v", err))
+		return errors.Wrap(err, "error inicializing discord client")
+	}
+	err = discord.Open()
+	if err != nil {
+		return errors.Wrap(err, "unable to connect to discord")
 	}
 
 	repository, err := repository.NewJSONRepository(repositoryFile)
 	if err != nil {
-		panic(fmt.Sprintf("error inicializing repository file: %+v", err))
+		return errors.Wrapf(err, "error inicializing repository file: %s", repositoryFile)
 	}
 
 	bot := bot.NewQuartermasterBot(
@@ -100,6 +111,8 @@ func runBot(cmd *cobra.Command, args []string) {
 	err = bot.Bot()
 	// systemd handles reload, so we can panic on error.
 	if err != nil {
-		panic(err)
+		return errors.Wrap(err, "error running bot")
 	}
+
+	return nil
 }

@@ -1,9 +1,10 @@
-package handler
+package http
 
 import (
 	"net/http"
 
 	"github.com/pkg/errors"
+	"go.uber.org/zap"
 )
 
 func (h *handler) callbackHandler(w http.ResponseWriter, r *http.Request) error {
@@ -13,7 +14,7 @@ func (h *handler) callbackHandler(w http.ResponseWriter, r *http.Request) error 
 	session := h.session(r)
 
 	if session.Values["state"] != nil && session.Values["state"] != state {
-		h.log.Errorw("state mismatch", "stored", session.Values["state"], "received", state)
+		h.log.Error("state mismatch", zap.Reflect("stored", session.Values["state"]), zap.String("received", state))
 		return errors.New("state mismatch, login again")
 	}
 
@@ -46,7 +47,7 @@ func (h *handler) callbackHandler(w http.ResponseWriter, r *http.Request) error 
 		return errors.Wrap(err, "unable to save session")
 	}
 
-	h.log.Infow("token verified", "v", v)
+	h.log.Debug("token verified", zap.Reflect("v", v))
 	http.Redirect(w, r, "/", 302)
 	return nil
 }

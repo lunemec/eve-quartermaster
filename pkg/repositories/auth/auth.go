@@ -1,4 +1,4 @@
-package token
+package repositories
 
 import (
 	"encoding/gob"
@@ -8,24 +8,18 @@ import (
 	"golang.org/x/oauth2"
 )
 
-// Storage is interface for accessing token data.
-type Storage interface {
-	Read() (oauth2.Token, error)
-	Write(oauth2.Token) error
-}
-
-type fileStorage struct {
+type fileAuthRepository struct {
 	filename string
 }
 
-// NewFileStorage returns token storage in file.
-func NewFileStorage(filename string) Storage {
-	return &fileStorage{
+// NewFileRepository returns token storage in file.
+func NewFileRepository(filename string) *fileAuthRepository {
+	return &fileAuthRepository{
 		filename: filename,
 	}
 }
 
-func (fs *fileStorage) Read() (oauth2.Token, error) {
+func (fs *fileAuthRepository) Read() (oauth2.Token, error) {
 	var out oauth2.Token
 	f, err := os.Open(fs.filename)
 	if err != nil {
@@ -42,7 +36,7 @@ func (fs *fileStorage) Read() (oauth2.Token, error) {
 }
 
 // Write truncates the file and replaces it with supplied token.
-func (fs *fileStorage) Write(token oauth2.Token) error {
+func (fs *fileAuthRepository) Write(token oauth2.Token) error {
 	f, err := os.Create(fs.filename)
 	if err != nil {
 		return errors.Wrapf(err, "unable to create file: %s", fs.filename)

@@ -1,4 +1,4 @@
-package bot
+package doctrineContractsBot
 
 import (
 	"context"
@@ -13,8 +13,10 @@ import (
 
 	"github.com/adrg/strutil"
 	"github.com/adrg/strutil/metrics"
+	"github.com/lunemec/eve-quartermaster/pkg/domain/doctrine_contracts/aggregate"
 	"github.com/lunemec/eve-quartermaster/pkg/repository"
 	"github.com/lunemec/eve-quartermaster/pkg/token"
+	"go.uber.org/zap"
 
 	"github.com/antihax/goesi"
 	"github.com/antihax/goesi/esi"
@@ -22,6 +24,12 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/pkg/errors"
 )
+
+type DoctrineContractsRepository interface {
+	Read() ([]aggregate.DoctrineContractCheck, error)
+	Write(requireStock []aggregate.DoctrineContractCheck) error
+	Set(doctrine aggregate.DoctrineContractCheck) error
+}
 
 const discordMaxDescriptionLength = 4096
 
@@ -33,7 +41,7 @@ type Bot interface {
 type quartermasterBot struct {
 	ctx         context.Context
 	tokenSource token.Source
-	log         logger
+	log         *zap.Logger
 	esi         *goesi.APIClient
 	discord     *discordgo.Session
 	channelID   string
@@ -53,14 +61,9 @@ type quartermasterBot struct {
 	names *sync.Map
 }
 
-type logger interface {
-	Infow(string, ...interface{})
-	Errorw(string, ...interface{})
-}
-
 // NewQuartermasterBot returns new bot instance.
 func NewQuartermasterBot(
-	log logger,
+	logger *zap.Logger,
 	client *http.Client,
 	tokenSource token.Source,
 	discord *discordgo.Session,
@@ -69,16 +72,16 @@ func NewQuartermasterBot(
 	repository repository.Repository,
 	checkInterval, notifyInterval time.Duration,
 ) Bot {
-	log.Infow("EVE Quartermaster starting",
-		"check_interval", checkInterval,
-		"notify_interval", notifyInterval,
+	logger.Info("EVE Quartermaster starting",
+		zap.Duration("check_interval", checkInterval),
+		zap.Duration("notify_interval", notifyInterval),
 	)
 
 	esi := goesi.NewAPIClient(client, "EVE Quartermaster")
 	return &quartermasterBot{
 		ctx:            context.WithValue(context.Background(), goesi.ContextOAuth2, tokenSource),
 		tokenSource:    tokenSource,
-		log:            log,
+		log:            logger,
 		esi:            esi,
 		discord:        discord,
 		channelID:      channelID,
@@ -94,88 +97,11 @@ func NewQuartermasterBot(
 
 // Bot - you know, do what a bot does.
 func (b *quartermasterBot) Bot() error {
-	err := b.discord.Open()
-	if err != nil {
-		return errors.Wrap(err, "unable to connect to discord")
-	}
-	// Add handler to listen for "!help" messages as help message.
-	b.discord.AddHandler(b.helpHandler)
-	// Add handler to listen for "!parse excel" messages for bulk insert from excel (or google) sheet.
-	b.discord.AddHandler(b.parseExcelHandler)
-	// Add handler to listen for "!qm" messages to show missing doctrines on contract.
-	b.discord.AddHandler(b.reportHandler)
-	// Add handler to listen for "!stock" messages to list currently available doctrines in stock.
-	b.discord.AddHandler(b.stockHandler)
-	// Add handler to listen for "!require" messages to manage target doctrine numbers to be stocked.
-	b.discord.AddHandler(b.requireHandler)
-
-	return b.runForever()
 }
 
 type doctrineReport struct {
 	doctrine    repository.Doctrine
 	haveInStock int
-}
-
-func (b *quartermasterBot) runForever() error {
-	for {
-		var (
-			shouldNotifyDoctrine bool
-			allDoctrines         []doctrineReport
-			notifyDoctrines      = make(map[string]struct{})
-		)
-
-		missingCorpDoctrines, missingAllianceDoctrines, err := b.reportMissing()
-		if err != nil {
-			b.log.Errorw("Error checking for missing doctrines",
-				"error", err,
-			)
-			goto SLEEP
-		}
-
-		allDoctrines = append(missingCorpDoctrines, missingAllianceDoctrines...)
-
-		// If just one of the missing doctrines should be notified about, notify about all.
-		for _, missingDoctrine := range allDoctrines {
-			shouldNotifyDoctrine = b.shouldNotify(missingDoctrine.doctrine.Name)
-			if shouldNotifyDoctrine {
-				notifyDoctrines[missingDoctrine.doctrine.Name] = struct{}{}
-			}
-		}
-
-		if len(notifyDoctrines) != 0 {
-			messages := b.notifyMessage(
-				filterNotifyDoctrines(notifyDoctrines, missingCorpDoctrines),
-				filterNotifyDoctrines(notifyDoctrines, missingAllianceDoctrines),
-			)
-			if len(messages) == 0 {
-				b.log.Infow("No doctrines added yet, sleeping.")
-				goto SLEEP
-			}
-			for _, message := range messages {
-				_, err = b.discord.ChannelMessageSendEmbed(
-					b.channelID,
-					message,
-				)
-				switch {
-				case err != nil:
-					b.log.Errorw("Error sending discord message",
-						"error", err,
-					)
-					// In case of error, we fall through to the time.Sleep
-					// block. We also do not set the structure as notified
-					// and it get picked up on next iteration.
-					goto SLEEP
-				case err == nil:
-					for notifiedDoctrine := range notifyDoctrines {
-						b.setWasNotified(notifiedDoctrine)
-					}
-				}
-			}
-		}
-	SLEEP:
-		time.Sleep(b.checkInterval)
-	}
 }
 
 func (b *quartermasterBot) reportMissing() ([]doctrineReport, []doctrineReport, error) {

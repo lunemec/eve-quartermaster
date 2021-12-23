@@ -1,4 +1,4 @@
-package handler
+package http
 
 import (
 	"net/http"
@@ -23,15 +23,15 @@ func (h *handler) indexHandler(w http.ResponseWriter, r *http.Request) error {
 
 	session := h.session(r)
 	token := session.Values["token"].(oauth2.Token)
-	err = h.tokenStorage.Write(token)
+	err = h.authService.SaveToken(token)
 	if err != nil {
 		return errors.Wrap(err, "unable to save token")
 	}
 	_, _ = w.Write([]byte("logged in successfully"))
-	// Spawn a goroutine that will send SIGTEM in 1s.
-	go func() {
+	// Spawn a goroutine that will send SIGTERM in 1s.
+	time.AfterFunc(1*time.Second, func() {
 		time.Sleep(1 * time.Second)
 		h.signalChan <- syscall.SIGTERM
-	}()
+	})
 	return nil
 }
