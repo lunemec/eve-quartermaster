@@ -125,7 +125,7 @@ func (b *quartermasterBot) runForever() error {
 			notifyDoctrines      = make(map[string]struct{})
 		)
 
-		missingCorpDoctrines, missingAllianceDoctrines, err := b.reportMissing()
+		missingCorpDoctrines, missingAllianceDoctrines, _, err := b.reportMissing()
 		if err != nil {
 			b.log.Errorw("Error checking for missing doctrines",
 				"error", err,
@@ -178,10 +178,10 @@ func (b *quartermasterBot) runForever() error {
 	}
 }
 
-func (b *quartermasterBot) reportMissing() ([]doctrineReport, []doctrineReport, error) {
+func (b *quartermasterBot) reportMissing() ([]doctrineReport, []doctrineReport, bool, error) {
 	allContracts, err := b.loadContracts()
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "unable to load contracts")
+		return nil, nil, false, errors.Wrap(err, "unable to load contracts")
 	}
 
 	corporationContracts, allianceContracts := b.filterAndGroupContracts(
@@ -194,15 +194,21 @@ func (b *quartermasterBot) reportMissing() ([]doctrineReport, []doctrineReport, 
 	gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
 	requireAllDoctrines, err := b.repository.Read()
 	if err != nil {
-		return nil, nil, errors.Wrap(err, "error reading required doctrines")
+		return nil, nil, false, errors.Wrap(err, "error reading required doctrines")
 	}
 
 	requireCorporationDoctrines := filterDoctrines(requireAllDoctrines, repository.Corporation)
 	requireAllianceDoctrines := filterDoctrines(requireAllDoctrines, repository.Alliance)
 
-	return b.missingDoctrines(requireCorporationDoctrines, gotCorporationDoctrines),
-		b.missingDoctrines(requireAllianceDoctrines, gotAllianceDoctrines),
-		nil
+	missingCorporationDoctrines := b.missingDoctrines(requireCorporationDoctrines, gotCorporationDoctrines)
+	missingAllianceDoctrines := b.missingDoctrines(requireAllianceDoctrines, gotAllianceDoctrines)
+
+	// If there is no missing contracts and contracts that are required, it means we
+	// have everything up on contract and nothing missing.
+	allIsOnContract := len(missingCorporationDoctrines)+len(missingAllianceDoctrines) == 0 &&
+		len(requireCorporationDoctrines)+len(requireAllianceDoctrines) > 0
+
+	return missingCorporationDoctrines, missingAllianceDoctrines, allIsOnContract, nil
 }
 
 func filterDoctrines(doctrines []repository.Doctrine, contractedOn repository.ContractedOn) []repository.Doctrine {
@@ -576,6 +582,28 @@ func (b *quartermasterBot) sendError(errIn error, m *discordgo.MessageCreate) {
 	}
 }
 
+func (b *quartermasterBot) sendAllOnContractMessage(m *discordgo.MessageCreate) {
+	color := 0x00ff00
+	msg := &discordgo.MessageEmbed{
+		Thumbnail: &discordgo.MessageEmbedThumbnail{
+			URL: "https://i.imgur.com/ZwUn8DI.jpg",
+		},
+		Color: color,
+		Image: &discordgo.MessageEmbedImage{
+			URL: "https://i.imgur.com/rYbXjfI.gif",
+		},
+		Timestamp: time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
+		Title:     "Doctrine ship stock :ok_hand:",
+	}
+	_, err := b.discord.ChannelMessageSendEmbed(
+		m.ChannelID,
+		msg,
+	)
+	if err != nil {
+		b.log.Errorw("error sending all on contract message", "error", err)
+	}
+}
+
 func (b *quartermasterBot) sendNoDoctrinesAddedMessage(m *discordgo.MessageCreate) {
 	msg := "Nothing added yet, use `!require` command to add doctrines, or check `!help` for more information."
 	_, err := b.discord.ChannelMessageSend(
@@ -583,6 +611,6 @@ func (b *quartermasterBot) sendNoDoctrinesAddedMessage(m *discordgo.MessageCreat
 		msg,
 	)
 	if err != nil {
-		b.log.Errorw("error sending help report full message", "error", err)
+		b.log.Errorw("error sending no doctrines added message", "error", err)
 	}
 }

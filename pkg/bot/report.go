@@ -58,7 +58,7 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 
 	if m.Content == "!report" || m.Content == "!qm" {
 		b.log.Infow("Responding to !qm command", "channel_id", m.ChannelID)
-		missingCorporationDoctrines, missingAllianceDoctrines, err := b.reportMissing()
+		missingCorporationDoctrines, missingAllianceDoctrines, allOnContract, err := b.reportMissing()
 		if err != nil {
 			b.log.Errorw("Error checking for missing doctrines",
 				"error", err,
@@ -66,6 +66,11 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 			b.sendError(err, m)
 			return
 		}
+		if allOnContract {
+			b.sendAllOnContractMessage(m)
+			return
+		}
+
 		messages := b.notifyMessage(missingCorporationDoctrines, missingAllianceDoctrines)
 		if len(messages) == 0 {
 			b.sendNoDoctrinesAddedMessage(m)
