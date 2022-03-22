@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -30,6 +31,11 @@ type Bot interface {
 	Bot() error
 }
 
+type botRepository interface {
+	repository.Repository
+	repository.PriceHistory
+}
+
 type quartermasterBot struct {
 	ctx         context.Context
 	tokenSource token.Source
@@ -44,7 +50,7 @@ type quartermasterBot struct {
 	checkInterval  time.Duration
 	notifyInterval time.Duration
 
-	repository repository.Repository
+	repository botRepository
 
 	// mapping of "requireed" doctrine name last notify time
 	notified map[string]time.Time
@@ -66,7 +72,7 @@ func NewQuartermasterBot(
 	discord *discordgo.Session,
 	channelID string,
 	corporationID, allianceID int32,
-	repository repository.Repository,
+	repository botRepository,
 	checkInterval, notifyInterval time.Duration,
 ) Bot {
 	log.Infow("EVE Quartermaster starting",
@@ -74,7 +80,7 @@ func NewQuartermasterBot(
 		"notify_interval", notifyInterval,
 	)
 
-	esi := goesi.NewAPIClient(client, "EVE Quartermaster")
+	esi := goesi.NewAPIClient(client, "EVE Quartermaster (lu.nemec@gmail.com)")
 	return &quartermasterBot{
 		ctx:            context.WithValue(context.Background(), goesi.ContextOAuth2, tokenSource),
 		tokenSource:    tokenSource,
@@ -108,6 +114,10 @@ func (b *quartermasterBot) Bot() error {
 	b.discord.AddHandler(b.stockHandler)
 	// Add handler to listen for "!require" messages to manage target doctrine numbers to be stocked.
 	b.discord.AddHandler(b.requireHandler)
+	// Add handler to listen for "!price" messages to record doctrine price history.
+	b.discord.AddHandler(b.recordPrice)
+	// Add handler to listen for "!leaderboard" messages to show hauling leaderboard.
+	b.discord.AddHandler(b.leaderboard)
 
 	return b.runForever()
 }
@@ -190,9 +200,15 @@ func (b *quartermasterBot) reportMissing() ([]doctrineReport, []doctrineReport, 
 		typeItemExchange,
 		true,
 	)
+
+	err = b.trackAndSavePrices(allContracts)
+	if err != nil {
+		b.log.Errorw("error tracking and saving price history", "error", err)
+	}
+
 	gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
 	gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
-	requireAllDoctrines, err := b.repository.Read()
+	requireAllDoctrines, err := b.repository.ReadAll()
 	if err != nil {
 		return nil, nil, false, errors.Wrap(err, "error reading required doctrines")
 	}
@@ -209,6 +225,71 @@ func (b *quartermasterBot) reportMissing() ([]doctrineReport, []doctrineReport, 
 		len(requireCorporationDoctrines)+len(requireAllianceDoctrines) > 0
 
 	return missingCorporationDoctrines, missingAllianceDoctrines, allIsOnContract, nil
+}
+
+func (b *quartermasterBot) trackAndSavePrices(allContracts []esi.GetCorporationsCorporationIdContracts200Ok) error {
+	// Check if contract title starts with *, that is used to track price.
+	// Example: "* v1 Shield Svipul"
+	var contracts []esi.GetCorporationsCorporationIdContracts200Ok
+	finishedCorporation, finishedAlliance := b.filterAndGroupContracts(
+		allContracts,
+		statusFinished,
+		typeItemExchange,
+		true,
+	)
+	finishedContractorCorporation, finishedContractorAlliance := b.filterAndGroupContracts(
+		allContracts,
+		statusFinishedContractor,
+		typeItemExchange,
+		true,
+	)
+	finishedIssuerCorporation, finishedIssuerAlliance := b.filterAndGroupContracts(
+		allContracts,
+		statusFinishedIssuer,
+		typeItemExchange,
+		true,
+	)
+	contracts = append(contracts, finishedCorporation...)
+	contracts = append(contracts, finishedAlliance...)
+	contracts = append(contracts, finishedContractorCorporation...)
+	contracts = append(contracts, finishedContractorAlliance...)
+	contracts = append(contracts, finishedIssuerCorporation...)
+	contracts = append(contracts, finishedIssuerAlliance...)
+
+	for _, contract := range contracts {
+		// This is price-tracking contract.
+		if strings.HasPrefix(contract.Title, "*") {
+			doctrineName := strings.TrimSpace(strings.TrimPrefix(contract.Title, "*"))
+			// Check if this is doctrine we track, if not, we don't care about this contract.
+			doctrine, err := b.repository.Get(doctrineName)
+			if err != nil {
+				return errors.Wrapf(err, "error loading doctrine: %s", doctrineName)
+			}
+
+			contractPrice := uint64(math.Trunc(contract.Price))
+			if contractPrice > doctrine.Price.Buy {
+				doctrine.Price.Buy = contractPrice
+				doctrine.Price.Timestamp = contract.DateIssued
+			}
+
+			err = b.repository.Set(doctrineName, doctrine)
+			if err != nil {
+				return errors.Wrap(err, "error saving doctrine")
+			}
+			// Deduplication of records is done in the repository.
+			err = b.repository.RecordPrice(repository.PriceData{
+				DoctrineName: doctrineName,
+				Timestamp:    contract.DateIssued,
+				ContractID:   contract.ContractId,
+				IssuerID:     contract.IssuerId,
+				Price:        contractPrice,
+			})
+			if err != nil {
+				return errors.Wrap(err, "error recording price history")
+			}
+		}
+	}
+	return nil
 }
 
 func filterDoctrines(doctrines []repository.Doctrine, contractedOn repository.ContractedOn) []repository.Doctrine {
@@ -328,23 +409,23 @@ type contractType string
 
 const (
 	// Contract Statuses.
-	statusOutstanding        contractStatus = "outstanding"
-	statusInProgress         contractStatus = "in_progress"
-	statusFinishedIssuer     contractStatus = "finished_issuer"
-	statusFinishedContractor contractStatus = "finished_contractor"
-	statusFinished           contractStatus = "finished"
-	statusCancelled          contractStatus = "cancelled"
-	statusRejected           contractStatus = "rejected"
-	statusFailed             contractStatus = "failed"
-	statusDeleted            contractStatus = "deleted"
-	statusReversed           contractStatus = "reversed"
+	statusOutstanding        contractStatus = "outstanding"         // nolint
+	statusInProgress         contractStatus = "in_progress"         // nolint
+	statusFinishedIssuer     contractStatus = "finished_issuer"     // nolint
+	statusFinishedContractor contractStatus = "finished_contractor" // nolint
+	statusFinished           contractStatus = "finished"            // nolint
+	statusCancelled          contractStatus = "cancelled"           // nolint
+	statusRejected           contractStatus = "rejected"            // nolint
+	statusFailed             contractStatus = "failed"              // nolint
+	statusDeleted            contractStatus = "deleted"             // nolint
+	statusReversed           contractStatus = "reversed"            // nolint
 
 	// Contract Types.
-	typeUnknown      contractType = "unknown"
-	typeItemExchange contractType = "item_exchange"
-	typeAuction      contractType = "auction"
-	typeCourier      contractType = "courier"
-	typeLoadn        contractType = "loan"
+	typeUnknown      contractType = "unknown"       // nolint
+	typeItemExchange contractType = "item_exchange" // nolint
+	typeAuction      contractType = "auction"       // nolint
+	typeCourier      contractType = "courier"       // nolint
+	typeLoadn        contractType = "loan"          // nolint
 )
 
 func (b *quartermasterBot) filterAndGroupContracts(
@@ -383,29 +464,57 @@ func (b *quartermasterBot) filterAndGroupContracts(
 	return corpContracts, allianceContracts
 }
 
-func (b *quartermasterBot) filterAlertContracts(
-	contracts []esi.GetCorporationsCorporationIdContracts200Ok,
-) []esi.GetCorporationsCorporationIdContracts200Ok {
-	var (
-		alertContracts []esi.GetCorporationsCorporationIdContracts200Ok
-	)
-	for _, contract := range contracts {
-		if contract.AssigneeId != b.corporationID && contract.AssigneeId != b.allianceID {
-			continue
-		}
+type alertContract struct {
+	Contract esi.GetCorporationsCorporationIdContracts200Ok
+	Reason   string
+}
 
-		switch contract.Status {
-		case string(statusCancelled), string(statusDeleted), string(statusFinished), string(statusFinishedContractor), string(statusFinishedIssuer):
-			continue
-		}
-		// Alert expired contract.
-		if contract.DateExpired.Before(time.Now()) {
-			alertContracts = append(alertContracts, contract)
-			continue
-		}
-		if contract.Type_ != string(typeItemExchange) {
-			alertContracts = append(alertContracts, contract)
-			continue
+func (b *quartermasterBot) filterAlertContracts(
+	requiredDoctrines []repository.Doctrine,
+	contracts []esi.GetCorporationsCorporationIdContracts200Ok,
+) []alertContract {
+	var (
+		alertContracts []alertContract
+	)
+	for _, requiredDoctrine := range requiredDoctrines {
+		for _, contract := range contracts {
+			if contract.AssigneeId != b.corporationID && contract.AssigneeId != b.allianceID {
+				continue
+			}
+			// Ignore price-tracking contracts in alerts.
+			if strings.HasPrefix(contract.Title, "*") {
+				continue
+			}
+			// Skip contracts that are not required doctrines.
+			if !compareDoctrineNames(requiredDoctrine.Name, contract.Title) {
+				continue
+			}
+
+			switch contract.Status {
+			case string(statusCancelled), string(statusDeleted), string(statusFinished), string(statusFinishedContractor), string(statusFinishedIssuer):
+				continue
+			}
+			// Alert if we bought this doctrine for more than we are selling it.
+			if requiredDoctrine.Price.Buy > uint64(contract.Price) {
+				alertContracts = append(alertContracts, alertContract{
+					Contract: contract,
+					Reason:   "Price",
+				})
+			}
+			// Alert expired contract.
+			if contract.DateExpired.Before(time.Now()) {
+				alertContracts = append(alertContracts, alertContract{
+					Contract: contract,
+					Reason:   "Expired",
+				})
+			}
+			// Alert on wrong type of contract.
+			if contract.Type_ != string(typeItemExchange) {
+				alertContracts = append(alertContracts, alertContract{
+					Contract: contract,
+					Reason:   "Wrong contract type",
+				})
+			}
 		}
 	}
 
@@ -440,6 +549,10 @@ func (b *quartermasterBot) idToName(id int32) string {
 func doctrinesAvailable(contracts []esi.GetCorporationsCorporationIdContracts200Ok) map[string]int {
 	var out = make(map[string]int)
 	for _, contract := range contracts {
+		// Skip price-tracking contracts starting with "*".
+		if strings.HasPrefix(contract.Title, "*") {
+			continue
+		}
 		var isInAvailable bool
 		for doctrineAvailable := range out {
 			namesEqual := compareDoctrineNames(doctrineAvailable, contract.Title)

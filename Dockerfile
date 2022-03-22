@@ -6,7 +6,7 @@ RUN mkdir -p /go/src/github.com/lunemec/eve-quartermaster
 WORKDIR /go/src/github.com/lunemec/eve-quartermaster
 COPY . .
 
-RUN go get github.com/ahmetb/govvv
+RUN go get github.com/ahmetb/govvv && go install github.com/ahmetb/govvv
 RUN CGO_ENABLED=0 GOOS=linux govvv build -pkg github.com/lunemec/eve-quartermaster/pkg/version -o quartermaster
 
 FROM scratch

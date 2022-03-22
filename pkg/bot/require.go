@@ -26,7 +26,7 @@ func (b *quartermasterBot) requireHandler(s *discordgo.Session, m *discordgo.Mes
 	// Required list goes first so that we don't trigger both it and !require.
 	if m.Content == "!require list" {
 		b.log.Infow("Responding to !require list command", "channel_id", m.ChannelID)
-		requiredDoctrines, err := b.repository.Read()
+		requiredDoctrines, err := b.repository.ReadAll()
 		if err != nil {
 			b.log.Errorw("error reading required in stock doctrines", "error", err)
 			b.sendError(err, m)
@@ -71,8 +71,17 @@ func (b *quartermasterBot) requireHandler(s *discordgo.Session, m *discordgo.Mes
 			b.sendError(err, m)
 			return
 		}
+		doctrine, err := b.repository.Get(doctrineName)
+		if err != nil && !errors.Is(err, repository.ErrNotFound) {
+			b.log.Errorw("error loading doctrine data", "error", err)
 
-		err = b.repository.Set(doctrineName, requireStock, contractOn)
+			b.sendError(err, m)
+			return
+		}
+		doctrine.ContractedOn = contractOn
+		doctrine.RequireStock = requireStock
+		doctrine.Name = doctrineName
+		err = b.repository.Set(doctrineName, doctrine)
 		if err != nil {
 			b.log.Errorw("error saving require in stock doctrine", "error", err)
 

@@ -5,9 +5,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/antihax/goesi/esi"
 	"github.com/bwmarrin/discordgo"
-	"github.com/dustin/go-humanize"
 	"github.com/lunemec/eve-quartermaster/pkg/repository"
 	"github.com/pkg/errors"
 )
@@ -94,7 +92,7 @@ func (b *quartermasterBot) reportFull() (
 	map[string]int,
 	[]doctrineReport,
 	map[string]int,
-	[]esi.GetCorporationsCorporationIdContracts200Ok,
+	[]alertContract,
 	error,
 ) {
 	allContracts, err := b.loadContracts()
@@ -110,7 +108,7 @@ func (b *quartermasterBot) reportFull() (
 	)
 	gotCorporationDoctrines := doctrinesAvailable(corporationContracts)
 	gotAllianceDoctrines := doctrinesAvailable(allianceContracts)
-	requireAllDoctrines, err := b.repository.Read()
+	requireAllDoctrines, err := b.repository.ReadAll()
 	if err != nil {
 		return nil, nil, nil, nil, nil, errors.Wrap(err, "error reading required doctrines")
 	}
@@ -133,7 +131,7 @@ func (b *quartermasterBot) reportFull() (
 		b.soldDoctrines(requireCorporationDoctrines, finishedCorporationDoctrines),
 		b.fullDoctrines(requireAllianceDoctrines, gotAllianceDoctrines),
 		b.soldDoctrines(requireAllianceDoctrines, finishedAllianceDoctrines),
-		b.filterAlertContracts(allContracts),
+		b.filterAlertContracts(requireAllDoctrines, allContracts),
 		nil
 }
 
@@ -179,14 +177,13 @@ func (b *quartermasterBot) reportFullMessage(
 	soldCorporationDoctrines map[string]int,
 	allianceDoctrines []doctrineReport,
 	soldAllianceDoctrines map[string]int,
-	alerts []esi.GetCorporationsCorporationIdContracts200Ok,
+	alerts []alertContract,
 ) []*discordgo.MessageEmbed {
 	var (
 		partsCorporation, partsAlliance, partsAlerts []string
-		msgOK                                        = ":small_blue_diamond: **%s** [%d/mo] - stocked %d, required %d"
-		msgMissing                                   = ":small_orange_diamond: **%s** [%d/mo] - stocked %d, required %d"
-		msgAlertExpired                              = "**%s**: By: **%s**, Expired: **%s**"
-		msgAlert                                     = "**%s**: By: **%s**, Type: **%s**, Status: **%s**"
+		msgOK                                        = ":small_blue_diamond: **%s** [ƶ %.0fM, %d/mo] - stocked %d, required %d"
+		msgMissing                                   = ":small_orange_diamond: **%s** [ƶ %.0fM, %d/mo] - stocked %d, required %d"
+		msgAlert                                     = "**%s**: Reason: **%s** By: **%s**, Type: **%s**, Status: **%s**"
 	)
 
 	for _, doctrine := range allianceDoctrines {
@@ -196,6 +193,7 @@ func (b *quartermasterBot) reportFullMessage(
 		}
 		part := fmt.Sprintf(msg,
 			doctrine.doctrine.Name,
+			float64(doctrine.doctrine.Price.Buy)/1000000,
 			soldAllianceDoctrines[doctrine.doctrine.Name],
 			doctrine.haveInStock,
 			doctrine.doctrine.RequireStock,
@@ -210,6 +208,7 @@ func (b *quartermasterBot) reportFullMessage(
 		}
 		part := fmt.Sprintf(msg,
 			doctrine.doctrine.Name,
+			float64(doctrine.doctrine.Price.Buy)/1000000,
 			soldCorporationDoctrines[doctrine.doctrine.Name],
 			doctrine.haveInStock,
 			doctrine.doctrine.RequireStock,
@@ -218,19 +217,13 @@ func (b *quartermasterBot) reportFullMessage(
 	}
 
 	for _, alert := range alerts {
-		if alert.DateExpired.Before(time.Now()) {
-			partsAlerts = append(partsAlerts, fmt.Sprintf(msgAlertExpired,
-				alert.Title,
-				b.idToName(alert.IssuerId),
-				humanize.Time(alert.DateExpired),
-			))
-			continue
-		}
+		contract := alert.Contract
 		part := fmt.Sprintf(msgAlert,
-			alert.Title,
-			b.idToName(alert.IssuerId),
-			alert.Type_,
-			alert.Status,
+			contract.Title,
+			alert.Reason,
+			b.idToName(contract.IssuerId),
+			contract.Type_,
+			contract.Status,
 		)
 		partsAlerts = append(partsAlerts, part)
 	}

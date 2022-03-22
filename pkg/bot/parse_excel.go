@@ -36,7 +36,7 @@ func (b *quartermasterBot) parseExcelHandler(s *discordgo.Session, m *discordgo.
 			}
 			return
 		}
-		err := b.repository.Write(doctrines)
+		err := b.repository.WriteAll(doctrines)
 		if err != nil {
 			b.log.Errorw("error saving bulk insert in stock doctrine", "error", err)
 

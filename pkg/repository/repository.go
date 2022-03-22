@@ -5,14 +5,16 @@ import (
 	"io"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/pkg/errors"
 )
 
 type Repository interface {
-	Read() ([]Doctrine, error)
-	Write([]Doctrine) error
-	Set(string, int, ContractedOn) error
+	ReadAll() ([]Doctrine, error)
+	WriteAll([]Doctrine) error
+	Get(string) (Doctrine, error)
+	Set(string, Doctrine) error
 }
 
 type ContractedOn string
@@ -23,11 +25,34 @@ const (
 )
 
 type Doctrine struct {
-	Name         string       `json:"name"`
-	RequireStock int          `json:"require_stock"`
-	ContractedOn ContractedOn `json:"contracted_on"`
+	Name         string        `json:"name"`           // Name of the doctrine.
+	RequireStock int           `json:"require_stock"`  // How many to have on contract.
+	ContractedOn ContractedOn  `json:"contracted_on"`  // Alliance/Corporation contract.
+	Price        DoctrinePrice `json:"doctrine_price"` // Price details.
 }
 
+type DoctrinePrice struct {
+	Buy       uint64    `json:"buy"`       // How much was this ship bought for.
+	Timestamp time.Time `json:"timestamp"` // When.
+}
+
+type PriceHistory interface {
+	RecordPrice(PriceData) error
+	SeekPrices(start time.Time, end time.Time) ([]PriceData, error)
+	Prices() ([]PriceData, error)
+}
+
+type PriceData struct {
+	Timestamp    time.Time `json:"timestamp"`
+	DoctrineName string    `json:"doctrine_name"`
+	ContractID   int32     `json:"contract_id"`
+	IssuerID     int32     `json:"issuer_id"`
+	Price        uint64    `json:"price"`
+}
+
+var ErrNotFound = errors.New("doctrine not found")
+
+// deprecated: jsonRepository must be migrated to bbolt repository.
 type jsonRepository struct {
 	filename string
 
@@ -40,7 +65,7 @@ func NewJSONRepository(filename string) (Repository, error) {
 	}, nil
 }
 
-func (r *jsonRepository) Read() ([]Doctrine, error) {
+func (r *jsonRepository) ReadAll() ([]Doctrine, error) {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -66,7 +91,7 @@ func (r *jsonRepository) Read() ([]Doctrine, error) {
 	return out, nil
 }
 
-func (r *jsonRepository) Write(requireStock []Doctrine) error {
+func (r *jsonRepository) WriteAll(requireStock []Doctrine) error {
 	r.lock.Lock()
 	defer r.lock.Unlock()
 
@@ -92,8 +117,22 @@ func (r *jsonRepository) Write(requireStock []Doctrine) error {
 	return nil
 }
 
-func (r *jsonRepository) Set(doctrineName string, requireStock int, contractOn ContractedOn) error {
-	updatedDoctrines, err := r.Read()
+func (r *jsonRepository) Get(doctrineName string) (Doctrine, error) {
+	doctrines, err := r.ReadAll()
+	if err != nil {
+		return Doctrine{}, errors.Wrap(err, "error reading current saved doctrines")
+	}
+
+	for _, savedDoctrine := range doctrines {
+		if savedDoctrine.Name == doctrineName {
+			return savedDoctrine, nil
+		}
+	}
+	return Doctrine{}, ErrNotFound
+}
+
+func (r *jsonRepository) Set(doctrineName string, doctrine Doctrine) error {
+	updatedDoctrines, err := r.ReadAll()
 	if err != nil {
 		return errors.Wrap(err, "error reading current saved doctrines")
 	}
@@ -103,7 +142,7 @@ func (r *jsonRepository) Set(doctrineName string, requireStock int, contractOn C
 		removeIdx int
 	)
 
-	if requireStock == 0 {
+	if doctrine.RequireStock == 0 {
 		remove = true
 	}
 
@@ -112,20 +151,15 @@ func (r *jsonRepository) Set(doctrineName string, requireStock int, contractOn C
 			found = true
 			removeIdx = i
 
-			savedDoctrine.RequireStock = requireStock
-			savedDoctrine.ContractedOn = contractOn
-			updatedDoctrines[i] = savedDoctrine
+			updatedDoctrines[i] = doctrine
+			break
 		}
 	}
 	if remove {
 		updatedDoctrines = append(updatedDoctrines[:removeIdx], updatedDoctrines[removeIdx+1:]...)
 	}
 	if !found && !remove {
-		updatedDoctrines = append(updatedDoctrines, Doctrine{
-			Name:         doctrineName,
-			RequireStock: requireStock,
-			ContractedOn: contractOn,
-		})
+		updatedDoctrines = append(updatedDoctrines, doctrine)
 	}
-	return r.Write(updatedDoctrines)
+	return r.WriteAll(updatedDoctrines)
 }

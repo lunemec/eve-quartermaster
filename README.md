@@ -3,9 +3,16 @@
 ![Quartermaster help image](./help.png "Quartermaster help message")  
 
 ## Features
+### Migrate from JSON repository to bbolt
+You must run this to migrate from versions < `1.1.0`. After this point, the bot will only
+use `repository.db`, feel free to delete `repository.json`.
+```
+quartermaster repository migrate
+```
 
 ### Add required doctrines
-The bot uses contract title to be able to tell what is in the contract. Make sure your corporation fittings and contract names are identical. It will help alot with managing things.
+The bot uses contract title to be able to tell what is in the contract. Make sure your 
+corporation fittings and contract names are identical. It will help alot with managing things.
 
 To **add 5000 Herons to be on Corporation Contract** at all times:
 ```
@@ -17,12 +24,14 @@ To trigger quick report of missing doctrines, use `!report` or `!qm`.
 ![Quartermaster quick report image](/report_small.png "Quartermaster quick report")
 
 ### Periodic reminder of missing stock
-The bot will call EVE ESI every `--check_interval` and will send quick report to a channel specified by `--discord_channel_id`.
+The bot will call EVE ESI every `--check_interval` and will send quick report 
+to a channel specified by `--discord_channel_id`.
 
 ### Full report
 Full report contains all doctrine ships that were added using `!require`, regardless of the stock.
 
-You can use this to easily see what is required, how many do you have in stock, how many contract of each were accepted per month and problematic contracts if any.  
+You can use this to easily see what is required, how many do you have in stock, 
+how many contract of each were accepted per month and problematic contracts if any.  
 ![Quartermaster full report image](report_full.png "Quartermaster full report")
 
 ### Bulk add
@@ -34,6 +43,19 @@ Tackle Stiletto	3	Corporation
 ```
 
 Be aware this will overwrite everything you added by hand using `!require`!
+
+### Price tracking
+The bot can track how much a doctrine is bought for. When hauler brings a doctrine, 
+they can simply create contract with title starting with `*`:
+```
+* Tackle Stiletto
+```
+
+The bot will look for these contracts and updates the doctrine buy price. It will also create price history
+record for this doctrine for later analysis (you can run `quartermaster repository read price_history`).
+
+These tracked prices are then visible when running `!report full` command.  
+Quartermaster bot will also `alert` when contract
 
 ### Other
 You can see what you have in stock `!stock` - or at least how the bot parses those contracts.

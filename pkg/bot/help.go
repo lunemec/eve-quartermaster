@@ -26,7 +26,10 @@ func (b *quartermasterBot) helpHandler(s *discordgo.Session, m *discordgo.Messag
 		"`!require NN Alliance|Corporation Doctrine name` - require to have `Doctrine name` `NN`" +
 		" times on alliance or corporation contracts at all times (0 to remove)\n" +
 		"`!require list` - list of doctrine ships required to have on contract at all times\n" +
-		"`!parse excel` - parse copy+pasted columns from excel (sheet)"
+		"`!parse excel` - parse copy+pasted columns from excel (sheet)\n" +
+		"`!price fetch` - re-check for price contracts, starting with `*`\n" +
+		"`!price set 45000000 Doctrine Name` - set price to 45M for `Doctrine name`\n" +
+		"`!leaderboard` - show leaderboard of haulers who made correct pricing contracts (starting with `*`)"
 
 	_, err := b.discord.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
 		Title: "Hello, I'm your Quartermaster.",
