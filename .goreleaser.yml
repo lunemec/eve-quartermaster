@@ -13,6 +13,9 @@ builds:
       - linux
       - windows
       - darwin
+    # Default is `-s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}} -X main.builtBy=goreleaser`.
+    ldflags:
+      - -s -w -X github.com/lunemec/eve-quartermaster/pkg/version.Version={{.Version}} -X github.com/lunemec/eve-quartermaster/pkg/version.BuildDate={{.CommitDate}} -X github.com/lunemec/eve-quartermaster/pkg/version.GitCommit={{.Commit}}
 archives:
   - replacements:
       darwin: Darwin
