@@ -267,7 +267,10 @@ func (b *quartermasterBot) trackAndSavePrices(allContracts []esi.GetCorporations
 			}
 
 			contractPrice := uint64(math.Trunc(contract.Price))
-			if contractPrice > doctrine.Price.Buy {
+			// We update doctrine buy price if
+			//   1) the contract we accepted is higher priced than the doctrine
+			//   2) the doctrine price timestamp is older than 3 months.
+			if contractPrice > doctrine.Price.Buy || doctrine.Price.Timestamp.Before(contract.DateIssued.AddDate(0, -3, 0)) {
 				doctrine.Price.Buy = contractPrice
 				doctrine.Price.Timestamp = contract.DateIssued
 			}
