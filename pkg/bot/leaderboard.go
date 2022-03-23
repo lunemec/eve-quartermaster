@@ -76,10 +76,12 @@ func (b *quartermasterBot) leaderboardMessage(priceData []repository.PriceData) 
 		stats = append(stats, stat)
 	}
 	sort.Slice(stats, func(i, j int) bool {
-		return stats[i].Contracts < stats[j].Contracts
+		return stats[i].Contracts > stats[j].Contracts
 	})
 	// We only want top 10 on the leaderboard.
-	// TODO
+	if len(stats) >= 10 {
+		stats = stats[:10]
+	}
 
 	var msgParts []string
 	for i, stat := range stats {
