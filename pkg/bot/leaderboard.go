@@ -101,6 +101,9 @@ func (b *quartermasterBot) leaderboardMessage(priceData []repository.PriceData) 
 		msgParts = append(msgParts, msg)
 	}
 
+	now := time.Now()
+	currentYear, currentMonth, _ := now.Date()
+
 	return &discordgo.MessageEmbed{
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
 			URL: "https://i.imgur.com/ZwUn8DI.jpg",
@@ -108,6 +111,6 @@ func (b *quartermasterBot) leaderboardMessage(priceData []repository.PriceData) 
 		Color:       0x00ff00,
 		Description: strings.Join(msgParts, "\n"),
 		Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
-		Title:       ":crown: Leaderboard",
+		Title:       fmt.Sprintf(":crown: Leaderboard for %s %d", currentMonth.String(), currentYear),
 	}, nil
 }
