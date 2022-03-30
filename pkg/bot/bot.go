@@ -263,6 +263,9 @@ func (b *quartermasterBot) trackAndSavePrices(allContracts []esi.GetCorporations
 			// Check if this is doctrine we track, if not, we don't care about this contract.
 			doctrine, err := b.repository.Get(doctrineName)
 			if err != nil {
+				if errors.Is(err, repository.ErrNotFound) {
+					continue
+				}
 				return errors.Wrapf(err, "error loading doctrine: %s", doctrineName)
 			}
 
