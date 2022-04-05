@@ -57,6 +57,9 @@ type quartermasterBot struct {
 
 	// ID -> names map
 	names *sync.Map
+
+	// Map of migrations to apply by reacting to message.
+	pendingMigrations *sync.Map
 }
 
 type logger interface {
@@ -82,19 +85,20 @@ func NewQuartermasterBot(
 
 	esi := goesi.NewAPIClient(client, "EVE Quartermaster (lu.nemec@gmail.com)")
 	return &quartermasterBot{
-		ctx:            context.WithValue(context.Background(), goesi.ContextOAuth2, tokenSource),
-		tokenSource:    tokenSource,
-		log:            log,
-		esi:            esi,
-		discord:        discord,
-		channelID:      channelID,
-		corporationID:  corporationID,
-		allianceID:     allianceID,
-		checkInterval:  checkInterval,
-		notifyInterval: notifyInterval,
-		repository:     repository,
-		notified:       make(map[string]time.Time),
-		names:          new(sync.Map),
+		ctx:               context.WithValue(context.Background(), goesi.ContextOAuth2, tokenSource),
+		tokenSource:       tokenSource,
+		log:               log,
+		esi:               esi,
+		discord:           discord,
+		channelID:         channelID,
+		corporationID:     corporationID,
+		allianceID:        allianceID,
+		checkInterval:     checkInterval,
+		notifyInterval:    notifyInterval,
+		repository:        repository,
+		notified:          make(map[string]time.Time),
+		names:             new(sync.Map),
+		pendingMigrations: new(sync.Map),
 	}
 }
 
@@ -118,6 +122,9 @@ func (b *quartermasterBot) Bot() error {
 	b.discord.AddHandler(b.recordPrice)
 	// Add handler to listen for "!leaderboard" messages to show hauling leaderboard.
 	b.discord.AddHandler(b.leaderboard)
+	// Add handler to listen for "!migrate" messages to migrate doctrines.
+	b.discord.AddHandler(b.migrate)
+	b.discord.AddHandler(b.migrateReact)
 
 	return b.runForever()
 }
@@ -693,9 +700,9 @@ func (b *quartermasterBot) wasNotified(doctrineName string) bool {
 	return true
 }
 
-func (b *quartermasterBot) sendError(errIn error, m *discordgo.MessageCreate) {
+func (b *quartermasterBot) sendError(errIn error, channelID string) {
 	msg := fmt.Sprintf("Sorry, some error happened: %s", errIn.Error())
-	_, err := b.discord.ChannelMessageSend(m.ChannelID, msg)
+	_, err := b.discord.ChannelMessageSend(channelID, msg)
 	if err != nil {
 		b.log.Errorw("error responding with error", "error", err, "original_error", errIn)
 	}

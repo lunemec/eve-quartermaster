@@ -40,6 +40,7 @@ type PriceHistory interface {
 	RecordPrice(PriceData) error
 	SeekPrices(start time.Time, end time.Time) ([]PriceData, error)
 	Prices() ([]PriceData, error)
+	WriteAllPrices([]PriceData) error
 }
 
 type PriceData struct {

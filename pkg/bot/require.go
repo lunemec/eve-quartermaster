@@ -29,7 +29,7 @@ func (b *quartermasterBot) requireHandler(s *discordgo.Session, m *discordgo.Mes
 		requiredDoctrines, err := b.repository.ReadAll()
 		if err != nil {
 			b.log.Errorw("error reading required in stock doctrines", "error", err)
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 		messages := requireListMessage(requiredDoctrines)
@@ -68,14 +68,14 @@ func (b *quartermasterBot) requireHandler(s *discordgo.Session, m *discordgo.Mes
 		requireStock, _ := strconv.Atoi(matches[0][1])
 		contractOn, err := validateContractOn(strings.ToLower(matches[0][2]))
 		if err != nil {
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 		doctrine, err := b.repository.Get(doctrineName)
 		if err != nil && !errors.Is(err, repository.ErrNotFound) {
 			b.log.Errorw("error loading doctrine data", "error", err)
 
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 		doctrine.ContractedOn = contractOn
@@ -85,7 +85,7 @@ func (b *quartermasterBot) requireHandler(s *discordgo.Session, m *discordgo.Mes
 		if err != nil {
 			b.log.Errorw("error saving require in stock doctrine", "error", err)
 
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 

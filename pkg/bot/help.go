@@ -29,7 +29,9 @@ func (b *quartermasterBot) helpHandler(s *discordgo.Session, m *discordgo.Messag
 		"`!parse excel` - parse copy+pasted columns from excel (sheet)\n" +
 		"`!price fetch` - re-check for price contracts, starting with `*`\n" +
 		"`!price set 45000000 Doctrine Name` - set price to 45M for `Doctrine name`\n" +
-		"`!leaderboard` - show leaderboard of haulers who made correct pricing contracts (starting with `*`)"
+		"`!leaderboard` - show leaderboard of haulers who made correct pricing contracts (starting with `*`)\n" +
+		"`!leaderboard 2022-01-01 2022-04-01` - to specify range\n" +
+		"`!migrate v4 v5` - for easier upgrading of doctrines, it is simple string replacement"
 
 	_, err := b.discord.ChannelMessageSendEmbed(m.ChannelID, &discordgo.MessageEmbed{
 		Title: "Hello, I'm your Quartermaster.",

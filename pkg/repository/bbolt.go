@@ -108,14 +108,18 @@ func (r *bboltRepository) WriteAll(requireStock []Doctrine) error {
 		}
 
 		// Cleanup unwanted doctrines.
-		c := b.Cursor()
-		for k, _ := c.First(); k != nil; k, _ = c.Next() {
+		var deleteKeys [][]byte
+		b.ForEach(func(k []byte, _ []byte) error {
 			_, ok := requiredDoctrines[string(k)]
 			if !ok {
-				err := b.Delete(k)
-				if err != nil {
-					return errors.Wrapf(err, "unable to delete: %+v", k)
-				}
+				deleteKeys = append(deleteKeys, k)
+			}
+			return nil
+		})
+		for _, deleteKey := range deleteKeys {
+			err := b.Delete(deleteKey)
+			if err != nil {
+				return errors.Wrapf(err, "unable to delete: %+v", deleteKey)
 			}
 		}
 
@@ -125,7 +129,7 @@ func (r *bboltRepository) WriteAll(requireStock []Doctrine) error {
 	if err != nil {
 		return errors.Wrap(err, "unable to write doctrines")
 	}
-	return nil
+	return r.db.Sync()
 }
 
 func (r *bboltRepository) Get(doctrineName string) (Doctrine, error) {
@@ -208,6 +212,35 @@ func (r *bboltRepository) RecordPrice(pricedata PriceData) error {
 	}
 
 	return nil
+}
+
+func (r *bboltRepository) WriteAllPrices(pricesdata []PriceData) error {
+	err := r.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket(priceHistoryBucket)
+
+		for _, pricedata := range pricesdata {
+			doctrineBucket, err := b.CreateBucketIfNotExists([]byte(pricedata.DoctrineName))
+			if err != nil {
+				return errors.Wrapf(err, "unable to create doctrine sub-bucket: %s", pricedata.DoctrineName)
+			}
+
+			key := pricedata.Timestamp.Format(timeFormat)
+			data, err := json.Marshal(pricedata)
+			if err != nil {
+				return errors.Wrapf(err, "unable to encode price data: %+v", pricedata)
+			}
+			err = doctrineBucket.Put([]byte(key), data)
+			if err != nil {
+				return errors.Wrapf(err, "error saving price data: %s %+v", key, pricedata)
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		return errors.Wrap(err, "unable to write price history")
+	}
+	return r.db.Sync()
 }
 
 func (r *bboltRepository) SeekPrices(start time.Time, end time.Time) ([]PriceData, error) {

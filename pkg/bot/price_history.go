@@ -58,7 +58,7 @@ func (b *quartermasterBot) recordPrice(s *discordgo.Session, m *discordgo.Messag
 		doctrineName := matches[0][2]
 		doctrinePrice, err := strconv.Atoi(matches[0][1])
 		if err != nil {
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 
@@ -66,7 +66,7 @@ func (b *quartermasterBot) recordPrice(s *discordgo.Session, m *discordgo.Messag
 		if err != nil {
 			b.log.Errorw("error loading doctrine data", "error", err, "doctrine_name", doctrineName)
 
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 		doctrine.Price.Buy = uint64(doctrinePrice)
@@ -75,7 +75,7 @@ func (b *quartermasterBot) recordPrice(s *discordgo.Session, m *discordgo.Messag
 		if err != nil {
 			b.log.Errorw("error saving doctrine data", "error", err, "doctrine_name", doctrineName)
 
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 		err = b.discord.MessageReactionAdd(m.ChannelID, m.ID, `👍`)

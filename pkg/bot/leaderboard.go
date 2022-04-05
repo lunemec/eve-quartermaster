@@ -9,6 +9,7 @@ import (
 	"github.com/bwmarrin/discordgo"
 	"github.com/dustin/go-humanize"
 	"github.com/lunemec/eve-quartermaster/pkg/repository"
+	"github.com/pkg/errors"
 )
 
 // leaderboard will be called every time a new
@@ -21,35 +22,54 @@ func (b *quartermasterBot) leaderboard(s *discordgo.Session, m *discordgo.Messag
 
 	// Force reloading of price from API.
 	if strings.HasPrefix(m.Content, "!leaderboard") {
-		b.log.Infow("Responding to !leaderboard", "channel_id", m.ChannelID)
+		paramsStr := strings.TrimPrefix(m.Content, "!leaderboard")
+		paramsStr = strings.TrimSpace(paramsStr)
+		params := strings.Split(paramsStr, " ")
 
-		now := time.Now()
-		currentYear, currentMonth, _ := now.Date()
+		b.log.Infow("Responding to !leaderboard", "channel_id", m.ChannelID, "msg", m.Content, "params", params)
 
-		firstOfMonth := time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, time.UTC)
-		lastOfMonth := firstOfMonth.AddDate(0, 1, -1)
+		var (
+			err                error
+			dateStart, dateEnd time.Time
+		)
+		if len(params) == 2 {
+			format := "2006-01-02"
+			dateStart, err = time.Parse(format, params[0])
+			if err != nil {
+				b.log.Errorw("error parsing dateStart", "error", err, "start_date", dateStart, "end_date", dateEnd)
 
-		priceData, err := b.repository.SeekPrices(firstOfMonth, lastOfMonth)
+				b.sendError(errors.Wrap(err, "unknown date format, use YYYY-MM-DD"), m.ChannelID)
+				return
+			}
+			dateEnd, err = time.Parse(format, params[1])
+			if err != nil {
+				b.log.Errorw("error parsing dateEnd", "error", err, "start_date", dateStart, "end_date", dateEnd)
+
+				b.sendError(errors.Wrap(err, "unknown date format, use YYYY-MM-DD"), m.ChannelID)
+				return
+			}
+		} else {
+			now := time.Now()
+			currentYear, currentMonth, _ := now.Date()
+
+			dateStart = time.Date(currentYear, currentMonth, 1, 0, 0, 0, 0, time.UTC)
+			dateEnd = dateStart.AddDate(0, 1, -1)
+		}
+
+		priceData, err := b.repository.SeekPrices(dateStart, dateEnd)
 		if err != nil {
-			b.log.Errorw("error seeking price history", "error", err, "start_date", firstOfMonth, "end_date", lastOfMonth)
+			b.log.Errorw("error seeking price history", "error", err, "start_date", dateStart, "end_date", dateEnd)
 
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 
-		message, err := b.leaderboardMessage(priceData)
-		if err != nil {
-			b.log.Errorw("error seeking price history", "error", err, "start_date", firstOfMonth, "end_date", lastOfMonth)
-
-			b.sendError(err, m)
-			return
-		}
-
+		message := b.leaderboardMessage(priceData, dateStart, dateEnd)
 		_, err = b.discord.ChannelMessageSendEmbed(m.ChannelID, message)
 		if err != nil {
 			b.log.Errorw("error sending message for !leaderboard", "error", err)
 
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 	}
@@ -61,7 +81,7 @@ type haulingStats struct {
 	IssuerID   int32
 }
 
-func (b *quartermasterBot) leaderboardMessage(priceData []repository.PriceData) (*discordgo.MessageEmbed, error) {
+func (b *quartermasterBot) leaderboardMessage(priceData []repository.PriceData, dateStart, dateEnd time.Time) *discordgo.MessageEmbed {
 	statsPerIssuer := make(map[int32]haulingStats)
 	for _, priceDatum := range priceData {
 		stats := statsPerIssuer[priceDatum.IssuerID]
@@ -101,8 +121,14 @@ func (b *quartermasterBot) leaderboardMessage(priceData []repository.PriceData) 
 		msgParts = append(msgParts, msg)
 	}
 
-	now := time.Now()
-	currentYear, currentMonth, _ := now.Date()
+	currentYear, currentMonth, _ := dateStart.Date()
+	title := fmt.Sprintf(":crown: Leaderboard for %s %d", currentMonth.String(), currentYear)
+
+	if dateStart.Month() != dateEnd.Month() {
+		startYear, startMonth, _ := dateStart.Date()
+		endYear, endMonth, _ := dateEnd.Date()
+		title = fmt.Sprintf(":crown: Leaderboard for %s %d - %s %d", startMonth.String(), startYear, endMonth.String(), endYear)
+	}
 
 	return &discordgo.MessageEmbed{
 		Thumbnail: &discordgo.MessageEmbedThumbnail{
@@ -111,6 +137,6 @@ func (b *quartermasterBot) leaderboardMessage(priceData []repository.PriceData) 
 		Color:       0x00ff00,
 		Description: strings.Join(msgParts, "\n"),
 		Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
-		Title:       fmt.Sprintf(":crown: Leaderboard for %s %d", currentMonth.String(), currentYear),
-	}, nil
+		Title:       title,
+	}
 }

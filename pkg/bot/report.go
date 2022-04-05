@@ -26,7 +26,7 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 				"error", err,
 			)
 
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 		messages := b.reportFullMessage(
@@ -61,7 +61,7 @@ func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.Mess
 			b.log.Errorw("Error checking for missing doctrines",
 				"error", err,
 			)
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 		if allOnContract {

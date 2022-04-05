@@ -5,6 +5,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [1.1.5] - 2022-05-04
+- `!leaderboard` can now be called with time-range to show custom leaderboards.
+- Added `!migrate FROM TO` command to easily change versions of doctrines.
+- Fixed bug when deleting unused doctrines left them there.
 ## [1.1.4] - 2022-03-30
 - Fixed bug with tracking prices when there is unknown doctrine present.
 ## [1.1.3] - 2022-03-23

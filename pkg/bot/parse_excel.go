@@ -44,7 +44,7 @@ func (b *quartermasterBot) parseExcelHandler(s *discordgo.Session, m *discordgo.
 			if err != nil {
 				b.log.Errorw("error reacting with :x:", "error", err)
 			}
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 		err = b.discord.MessageReactionAdd(m.ChannelID, m.ID, `👍`)

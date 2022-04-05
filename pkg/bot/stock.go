@@ -22,7 +22,7 @@ func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.Messa
 
 		if err != nil {
 			b.log.Errorw("error loading ESI contracts", "error", err)
-			b.sendError(err, m)
+			b.sendError(err, m.ChannelID)
 			return
 		}
 		corporationContracts, allianceContracts := b.filterAndGroupContracts(
