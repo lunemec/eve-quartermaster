@@ -5,7 +5,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-## [1.1.5] - 2022-05-04
+## [1.1.6] - 2022-04-12
+- Fixed bug in `!leaderboard` showing `#System` from IssuerID 0.
+## [1.1.5] - 2022-04-05
 - `!leaderboard` can now be called with time-range to show custom leaderboards.
 - Added `!migrate FROM TO` command to easily change versions of doctrines.
 - Fixed bug when deleting unused doctrines left them there.

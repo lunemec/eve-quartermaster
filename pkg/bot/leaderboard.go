@@ -84,6 +84,10 @@ type haulingStats struct {
 func (b *quartermasterBot) leaderboardMessage(priceData []repository.PriceData, dateStart, dateEnd time.Time) *discordgo.MessageEmbed {
 	statsPerIssuer := make(map[int32]haulingStats)
 	for _, priceDatum := range priceData {
+		// Issuers with ID 0 are items that were !price set, or !migrate'd.
+		if priceDatum.IssuerID == 0 {
+			continue
+		}
 		stats := statsPerIssuer[priceDatum.IssuerID]
 		stats.IssuerID = priceDatum.IssuerID
 		stats.Contracts++
