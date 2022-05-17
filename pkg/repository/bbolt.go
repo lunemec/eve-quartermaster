@@ -3,6 +3,7 @@ package repository
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"time"
 
@@ -308,5 +309,43 @@ func (r *bboltRepository) Prices() ([]PriceData, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "unable to read price history")
 	}
+	return out, nil
+}
+
+func (r *bboltRepository) NPricesForDoctrine(doctrineName string, n int) ([]PriceData, error) {
+	nOrig := n
+	var out []PriceData
+
+	err := r.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket(priceHistoryBucket)
+		doctrineBucket := b.Bucket([]byte(doctrineName))
+		if doctrineBucket == nil {
+			return nil
+		}
+
+		c := doctrineBucket.Cursor()
+		for doctrineName, data := c.Last(); doctrineName != nil; doctrineName, data = c.Prev() {
+			if n == 0 {
+				return nil
+			}
+
+			var pricedata PriceData
+			err := json.Unmarshal(data, &pricedata)
+			if err != nil {
+				return errors.Wrapf(err, "error unmarshaling price history data: %+v", string(data))
+			}
+
+			out = append(out, pricedata)
+			n--
+			return nil
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, errors.Wrap(err, "unable to read price history")
+	}
+
+	fmt.Printf("LAST :%d for %s :%+v \n", nOrig, doctrineName, out)
 	return out, nil
 }

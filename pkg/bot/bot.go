@@ -268,7 +268,7 @@ func (b *quartermasterBot) trackAndSavePrices(allContracts []esi.GetCorporations
 		if strings.HasPrefix(contract.Title, "*") {
 			doctrineName := strings.TrimSpace(strings.TrimPrefix(contract.Title, "*"))
 			// Check if this is doctrine we track, if not, we don't care about this contract.
-			doctrine, err := b.repository.Get(doctrineName)
+			_, err := b.repository.Get(doctrineName)
 			if err != nil {
 				if errors.Is(err, repository.ErrNotFound) {
 					continue
@@ -277,18 +277,7 @@ func (b *quartermasterBot) trackAndSavePrices(allContracts []esi.GetCorporations
 			}
 
 			contractPrice := uint64(math.Trunc(contract.Price))
-			// We update doctrine buy price if
-			//   1) the contract we accepted is higher priced than the doctrine
-			//   2) the doctrine price timestamp is older than 3 months.
-			if contractPrice > doctrine.Price.Buy || doctrine.Price.Timestamp.Before(contract.DateIssued.AddDate(0, -3, 0)) {
-				doctrine.Price.Buy = contractPrice
-				doctrine.Price.Timestamp = contract.DateIssued
-			}
 
-			err = b.repository.Set(doctrineName, doctrine)
-			if err != nil {
-				return errors.Wrap(err, "error saving doctrine")
-			}
 			// Deduplication of records is done in the repository.
 			err = b.repository.RecordPrice(repository.PriceData{
 				DoctrineName: doctrineName,
@@ -302,7 +291,46 @@ func (b *quartermasterBot) trackAndSavePrices(allContracts []esi.GetCorporations
 			}
 		}
 	}
+
+	requireAllDoctrines, err := b.repository.ReadAll()
+	if err != nil {
+		return errors.Wrap(err, "error reading required doctrines")
+	}
+
+	for _, requiredDoctrine := range requireAllDoctrines {
+		// Update price to max(price) last 2x doctrine.RequireStock contracts.
+		n := requiredDoctrine.RequireStock * 2
+		prices, err := b.repository.NPricesForDoctrine(requiredDoctrine.Name, n)
+		if err != nil {
+			return errors.Wrap(err, "error listing last N prices for doctrine")
+		}
+		historicalMaxPrice := maxPrice(prices)
+		b.log.Infow("Last N prices for", "doctrine", requiredDoctrine.Name, "N", n, "prices", prices, "old", requiredDoctrine.Price, "new", historicalMaxPrice)
+
+		// Update only if the max price is non-zero.
+		if historicalMaxPrice.Price != 0 {
+			requiredDoctrine.Price.Buy = historicalMaxPrice.Price
+			requiredDoctrine.Price.Timestamp = historicalMaxPrice.Timestamp
+
+			err = b.repository.Set(requiredDoctrine.Name, requiredDoctrine)
+			if err != nil {
+				return errors.Wrap(err, "error saving doctrine")
+			}
+		}
+	}
 	return nil
+}
+
+func maxPrice(prices []repository.PriceData) repository.PriceData {
+	var seen repository.PriceData
+
+	for _, priceDatum := range prices {
+		if priceDatum.Price > seen.Price {
+			seen = priceDatum
+		}
+	}
+
+	return seen
 }
 
 func filterDoctrines(doctrines []repository.Doctrine, contractedOn repository.ContractedOn) []repository.Doctrine {

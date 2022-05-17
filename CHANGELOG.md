@@ -5,6 +5,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+## [1.1.7] - 2022-05-16
+- Prices of doctrines are now based on historical price, using MAX() of last N prices,
+  where N is 2x required number to be stocked. This makes sure any stocked ships get
+  sold for original price, while newly accepted cheaper or more expensive will eventually
+  catch up to the buy price.
 ## [1.1.6] - 2022-04-12
 - Fixed bug in `!leaderboard` showing `#System` from IssuerID 0.
 ## [1.1.5] - 2022-04-05
