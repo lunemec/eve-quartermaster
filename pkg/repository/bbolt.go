@@ -3,7 +3,6 @@ package repository
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"time"
 
@@ -313,7 +312,6 @@ func (r *bboltRepository) Prices() ([]PriceData, error) {
 }
 
 func (r *bboltRepository) NPricesForDoctrine(doctrineName string, n int) ([]PriceData, error) {
-	nOrig := n
 	var out []PriceData
 
 	err := r.db.View(func(tx *bolt.Tx) error {
@@ -337,7 +335,6 @@ func (r *bboltRepository) NPricesForDoctrine(doctrineName string, n int) ([]Pric
 
 			out = append(out, pricedata)
 			n--
-			return nil
 		}
 
 		return nil
@@ -346,6 +343,5 @@ func (r *bboltRepository) NPricesForDoctrine(doctrineName string, n int) ([]Pric
 		return nil, errors.Wrap(err, "unable to read price history")
 	}
 
-	fmt.Printf("LAST :%d for %s :%+v \n", nOrig, doctrineName, out)
 	return out, nil
 }
