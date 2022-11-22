@@ -679,7 +679,7 @@ func (b *quartermasterBot) notifyMessage(
 				Color:       color,
 				Description: reportMessage,
 				Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
-				Title:       "Doctrine ship stock low [Alliance]",
+				Title:       "Doctrine ship contracts low [Alliance]",
 			},
 			)
 		}
@@ -694,7 +694,7 @@ func (b *quartermasterBot) notifyMessage(
 				Color:       color,
 				Description: reportMessage,
 				Timestamp:   time.Now().Format(time.RFC3339), // Discord wants ISO8601; RFC3339 is an extension of ISO8601 and should be completely compatible.
-				Title:       "Doctrine ship stock low [Corporation]",
+				Title:       "Doctrine ship contracts low [Corporation]",
 			},
 			)
 		}
