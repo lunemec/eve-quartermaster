@@ -11,11 +11,6 @@ import (
 // stockHandler will be called every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (b *quartermasterBot) stockHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore all messages created by the bot itself.
-	if m.Author.ID == s.State.User.ID {
-		return
-	}
-
 	if m.Content == "!stock" {
 		b.log.Infow("Responding to !stock command", "channel_id", m.ChannelID)
 		allContracts, err := b.loadContracts()

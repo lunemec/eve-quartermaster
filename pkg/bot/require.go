@@ -18,11 +18,6 @@ var requireRegex = regexp.MustCompile(`^(?P<number>[0-9]+)\s(?P<contract>[Aa]lli
 // requireHandler will be called every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (b *quartermasterBot) requireHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore all messages created by the bot itself.
-	if m.Author.ID == s.State.User.ID {
-		return
-	}
-
 	// Required list goes first so that we don't trigger both it and !require.
 	if m.Content == "!require list" {
 		b.log.Infow("Responding to !require list command", "channel_id", m.ChannelID)

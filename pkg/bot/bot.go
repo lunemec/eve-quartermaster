@@ -109,24 +109,48 @@ func (b *quartermasterBot) Bot() error {
 		return errors.Wrap(err, "unable to connect to discord")
 	}
 	// Add handler to listen for "!help" messages as help message.
-	b.discord.AddHandler(b.helpHandler)
+	b.discord.AddHandler(IgnoreSelfMessages(IgnorePrivateMessages(b.helpHandler)))
 	// Add handler to listen for "!parse excel" messages for bulk insert from excel (or google) sheet.
-	b.discord.AddHandler(b.parseExcelHandler)
+	b.discord.AddHandler(IgnoreSelfMessages(IgnorePrivateMessages(b.parseExcelHandler)))
 	// Add handler to listen for "!qm" messages to show missing doctrines on contract.
-	b.discord.AddHandler(b.reportHandler)
+	b.discord.AddHandler(IgnoreSelfMessages(IgnorePrivateMessages(b.reportHandler)))
 	// Add handler to listen for "!stock" messages to list currently available doctrines in stock.
-	b.discord.AddHandler(b.stockHandler)
+	b.discord.AddHandler(IgnoreSelfMessages(IgnorePrivateMessages(b.stockHandler)))
 	// Add handler to listen for "!require" messages to manage target doctrine numbers to be stocked.
-	b.discord.AddHandler(b.requireHandler)
+	b.discord.AddHandler(IgnoreSelfMessages(IgnorePrivateMessages(b.requireHandler)))
 	// Add handler to listen for "!price" messages to record doctrine price history.
-	b.discord.AddHandler(b.recordPrice)
+	b.discord.AddHandler(IgnoreSelfMessages(IgnorePrivateMessages(b.recordPrice)))
 	// Add handler to listen for "!leaderboard" messages to show hauling leaderboard.
-	b.discord.AddHandler(b.leaderboard)
+	b.discord.AddHandler(IgnoreSelfMessages(IgnorePrivateMessages(b.leaderboard)))
 	// Add handler to listen for "!migrate" messages to migrate doctrines.
-	b.discord.AddHandler(b.migrate)
+	b.discord.AddHandler(IgnoreSelfMessages(IgnorePrivateMessages(b.migrate)))
 	b.discord.AddHandler(b.migrateReact)
 
 	return b.runForever()
+}
+
+func IgnoreSelfMessages(
+	handler func(*discordgo.Session, *discordgo.MessageCreate),
+) func(*discordgo.Session, *discordgo.MessageCreate) {
+	return func(s *discordgo.Session, m *discordgo.MessageCreate) {
+		// Ignore all messages created by the bot itself.
+		if m.Author.ID == s.State.User.ID {
+			return
+		}
+		handler(s, m)
+	}
+}
+
+func IgnorePrivateMessages(
+	handler func(*discordgo.Session, *discordgo.MessageCreate),
+) func(*discordgo.Session, *discordgo.MessageCreate) {
+	return func(s *discordgo.Session, m *discordgo.MessageCreate) {
+		// Ignore all private messages (guild_id is not present).
+		if m.GuildID == "" {
+			return
+		}
+		handler(s, m)
+	}
 }
 
 type doctrineReport struct {

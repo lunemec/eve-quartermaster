@@ -20,11 +20,6 @@ type migration struct {
 // migrate will be called every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (b *quartermasterBot) migrate(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore all messages created by the bot itself.
-	if m.Author.ID == s.State.User.ID {
-		return
-	}
-
 	// Force reloading of price from API.
 	if strings.HasPrefix(m.Content, "!migrate") {
 		paramsStr := strings.TrimPrefix(m.Content, "!migrate")

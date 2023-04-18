@@ -13,11 +13,6 @@ import (
 // reportHandler will be called every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (b *quartermasterBot) reportHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore all messages created by the bot itself.
-	if m.Author.ID == s.State.User.ID {
-		return
-	}
-
 	if m.Content == "!report full" {
 		b.log.Infow("Responding to !report full", "channel_id", m.ChannelID)
 		corporationDoctrines, soldCorporationDoctrines, allianceDoctrines, soldAllianceDoctrines, alerts, err := b.reportFull()

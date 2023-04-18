@@ -14,11 +14,6 @@ var parseExcelRegex = regexp.MustCompile(`(?P<name>.+)\s{4}(?P<number>[0-9]+)\s{
 // parseExcelHandler will be called every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (b *quartermasterBot) parseExcelHandler(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore all messages created by the bot itself.
-	if m.Author.ID == s.State.User.ID {
-		return
-	}
-
 	if strings.HasPrefix(m.Content, "!parse excel") {
 		// Format is (strips ```):
 		// !parse excel

@@ -15,11 +15,6 @@ import (
 // leaderboard will be called every time a new
 // message is created on any channel that the autenticated bot has access to.
 func (b *quartermasterBot) leaderboard(s *discordgo.Session, m *discordgo.MessageCreate) {
-	// Ignore all messages created by the bot itself.
-	if m.Author.ID == s.State.User.ID {
-		return
-	}
-
 	// Force reloading of price from API.
 	if strings.HasPrefix(m.Content, "!leaderboard") {
 		paramsStr := strings.TrimPrefix(m.Content, "!leaderboard")
